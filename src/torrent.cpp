@@ -1311,6 +1311,11 @@ bool is_downloading_state(int const st)
 		return m_ses.disk_thread().get_torrent(m_storage);
 	}
 
+	void torrent::add_part(std::int64_t start_byte, std::string save_path)
+    {
+    	return m_ses.disk_thread().get_torrent(m_storage).add_part(start_byte, save_path);
+    }
+
 	void torrent::need_picker()
 	{
 		if (m_picker) return;

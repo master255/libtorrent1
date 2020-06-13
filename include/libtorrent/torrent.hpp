@@ -1009,6 +1009,7 @@ namespace libtorrent {
 		bool has_storage() const { return bool(m_storage); }
 		storage_index_t storage() const { return m_storage; }
 		storage_interface* get_storage_impl() const;
+		void add_part(std::int64_t start_byte, std::string save_path);
 
 		torrent_info const& torrent_file() const
 		{ return *m_torrent_file; }
