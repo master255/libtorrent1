@@ -408,7 +408,7 @@ namespace libtorrent {
 		mutable std::mutex m_file_created_mutex;
 		mutable typed_bitfield<file_index_t> m_file_created;
 
-        std::map<std::int64_t start_byte, std::string save_path> parts_map;
+        std::map<std::int64_t, std::string> parts_map;
 
 		bool m_allocate_files;
 	};
