@@ -487,7 +487,7 @@ namespace libtorrent {
 		m_stat_cache.clear();
 	}
 
-	void default_storage::add_part(std::int64_t start_byte, std::string save_path)
+	void default_storage::add_part(std::int64_t start_byte, std::string save_path) override
     {
         parts_map.insert(std::make_pair(start_byte, save_path));
     }
@@ -808,7 +808,7 @@ namespace {
 			void delete_files(remove_flags_t, storage_error&) override {}
 			void initialize(storage_error&) override {}
 			status_t move_storage(std::string const&, move_flags_t, storage_error&) override { return status_t::no_error; }
-            void add_part(std::int64_t start_byte, std::string save_path) {
+            void add_part(std::int64_t start_byte, std::string save_path) override {
             (void)start_byte;
             (void)save_path;
             }
@@ -862,7 +862,7 @@ namespace {
 				return std::accumulate(bufs.begin(), bufs.end(), 0
 					, [](int const acc, iovec_t const& b) { return acc + int(b.size()); });
 			}
-            void add_part(std::int64_t start_byte, std::string save_path) {
+            void add_part(std::int64_t start_byte, std::string save_path) override {
                         (void)start_byte;
                         (void)save_path;
                         }
