@@ -808,7 +808,10 @@ namespace {
 			void delete_files(remove_flags_t, storage_error&) override {}
 			void initialize(storage_error&) override {}
 			status_t move_storage(std::string const&, move_flags_t, storage_error&) override { return status_t::no_error; }
-
+            void add_part(std::int64_t start_byte, std::string save_path) {
+            (void)start_byte;
+            (void)save_path;
+            }
 			int readv(span<iovec_t const> bufs
 				, piece_index_t, int, open_mode_t, storage_error&) override
 			{
@@ -859,7 +862,10 @@ namespace {
 				return std::accumulate(bufs.begin(), bufs.end(), 0
 					, [](int const acc, iovec_t const& b) { return acc + int(b.size()); });
 			}
-
+            void add_part(std::int64_t start_byte, std::string save_path) {
+                        (void)start_byte;
+                        (void)save_path;
+                        }
 			bool has_any_file(storage_error&) override { return false; }
 			void set_file_priority(aux::vector<download_priority_t, file_index_t>& /* prio */
 				, storage_error&) override {}

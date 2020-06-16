@@ -338,6 +338,7 @@ namespace libtorrent {
 		void rename_file(file_index_t index, std::string const& new_filename
 			, storage_error& ec) override;
 		void release_files(storage_error& ec) override;
+		void add_part(std::int64_t start_byte, std::string save_path) override;
 		void delete_files(remove_flags_t options, storage_error& ec) override;
 		void initialize(storage_error& ec) override;
 		status_t move_storage(std::string const& save_path
