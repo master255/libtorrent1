@@ -488,7 +488,7 @@ namespace libtorrent {
 	}
 
 	void default_storage::add_part(std::int64_t start_byte, std::string save_path) {
-        parts_map.insert(std::make_pair(start_byte, save_path));
+        //parts_map.insert(std::make_pair(start_byte, save_path));
     }
 
 	void default_storage::delete_files(remove_flags_t const options, storage_error& ec)
