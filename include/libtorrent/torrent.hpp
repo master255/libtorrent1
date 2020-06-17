@@ -447,6 +447,7 @@ namespace libtorrent {
 			error_code error;
 		};
 		void read_piece(piece_index_t piece);
+		void add_part(std::int64_t start_byte, std::string save_path);
 		void on_disk_read_complete(disk_buffer_holder block, disk_job_flags_t, storage_error const& se
 			, peer_request const& r, std::shared_ptr<read_piece_struct> rp);
 
@@ -1009,7 +1010,6 @@ namespace libtorrent {
 		bool has_storage() const { return bool(m_storage); }
 		storage_index_t storage() const { return m_storage; }
 		storage_interface* get_storage_impl() const;
-		void add_part(std::int64_t start_byte, std::string save_path);
 
 		torrent_info const& torrent_file() const
 		{ return *m_torrent_file; }
