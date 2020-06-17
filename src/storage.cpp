@@ -487,8 +487,7 @@ namespace libtorrent {
 		m_stat_cache.clear();
 	}
 
-	void default_storage::add_part(std::int64_t start_byte, std::string save_path) override
-    {
+	void default_storage::add_part(std::int64_t start_byte, std::string save_path) override {
         parts_map.insert(std::make_pair(start_byte, save_path));
     }
 
