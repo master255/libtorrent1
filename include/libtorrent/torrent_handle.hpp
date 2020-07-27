@@ -296,8 +296,11 @@ namespace aux {
 		// guaranteed to finish in the same order as you initiated them.
 		void read_piece(piece_index_t piece) const;
 
-		void add_part(std::int64_t start_byte, std::string save_path) const;
+		void add_part(file_index_t const index, std::int64_t const start_byte) const;
 
+		void set_parts_enabled(bool const parts_enabled) const;
+
+        void set_sequential_start(piece_index_t piece) const;
 		// Returns true if this piece has been completely downloaded and written
 		// to disk, and false otherwise.
 		bool have_piece(piece_index_t piece) const;

@@ -200,6 +200,7 @@ bool is_downloading_state(int const st)
 		, m_announcing(false)
 		, m_added(false)
 		, m_sequential_download(p.flags & torrent_flags::sequential_download)
+        , m_parts_enabled(p.flags & torrent_flags::parts_enabled)
 		, m_auto_sequential(false)
 		, m_seed_mode(false)
 #ifndef TORRENT_DISABLE_SUPERSEEDING
@@ -1001,6 +1002,8 @@ bool is_downloading_state(int const st)
 #endif
 		if (m_sequential_download)
 			ret |= torrent_flags::sequential_download;
+        if (m_parts_enabled)
+            ret |= torrent_flags::parts_enabled;
 		if (m_stop_when_ready)
 			ret |= torrent_flags::stop_when_ready;
 		if (!m_enable_dht)
@@ -1041,6 +1044,8 @@ bool is_downloading_state(int const st)
 		if (mask & torrent_flags::super_seeding)
 			set_super_seeding(bool(flags & torrent_flags::super_seeding));
 #endif
+        if (mask & torrent_flags::parts_enabled)
+            set_parts_enabled_local(bool(flags & torrent_flags::parts_enabled));
 		if (mask & torrent_flags::sequential_download)
 			set_sequential_download(bool(flags & torrent_flags::sequential_download));
 		if (mask & torrent_flags::stop_when_ready)
@@ -1311,9 +1316,20 @@ bool is_downloading_state(int const st)
 		return m_ses.disk_thread().get_torrent(m_storage);
 	}
 
-	void torrent::add_part(std::int64_t start_byte, std::string save_path)
+	void torrent::add_part(file_index_t const index, std::int64_t const start_byte)
     {
-    	return m_ses.disk_thread().get_torrent(m_storage)->add_part(start_byte, save_path);
+    	return m_ses.disk_thread().get_torrent(m_storage)->add_part(index, start_byte);
+    }
+
+    void torrent::set_parts_enabled(bool const parts_enabled)
+    {
+        return m_ses.disk_thread().get_torrent(m_storage)->set_parts_enabled(parts_enabled);
+    }
+
+    void torrent::set_sequential_start(piece_index_t piece)
+    {
+        if (!m_picker) return;
+        m_picker->set_sequential_start(piece);
     }
 
 	void torrent::need_picker()
@@ -1444,8 +1460,7 @@ bool is_downloading_state(int const st)
 
 		m_stats_counters.inc_stats_counter(counters::queued_write_bytes, -p.length);
 
-//		std::fprintf(stderr, "torrent::on_disk_write_complete ret:%d piece:%d block:%d\n"
-//			, j->ret, j->piece, j->offset/0x4000);
+//		std::fprintf(stderr, "torrent::on_disk_write_complete ret:%d piece:%d block:%d\n", j->ret, j->piece, j->offset/0x4000);
 
 		INVARIANT_CHECK;
 		if (m_abort) return;
@@ -1761,7 +1776,8 @@ bool is_downloading_state(int const st)
 			m_save_path,
 			static_cast<storage_mode_t>(m_storage_mode),
 			m_file_priority,
-			m_info_hash
+			m_info_hash,
+            m_parts_enabled
 		};
 
 		TORRENT_ASSERT(m_storage_constructor);
@@ -8161,6 +8177,12 @@ bool is_downloading_state(int const st)
 
 		state_updated();
 	}
+
+    void torrent::set_parts_enabled_local(bool const pe)
+    {
+        if (m_parts_enabled == pe) return;
+        m_parts_enabled = pe;
+    }
 
 	void torrent::queue_up()
 	{

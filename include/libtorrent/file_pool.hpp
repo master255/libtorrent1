@@ -63,9 +63,9 @@ namespace libtorrent {
 		// return an open file handle to file at ``file_index`` in the
 		// file_storage ``fs`` opened at save path ``p``. ``m`` is the
 		// file open mode (see file::open_mode_t).
-		file_handle open_file(storage_index_t st, std::string const& p
-			, file_index_t file_index, file_storage const& fs, open_mode_t m
-			, error_code& ec);
+        file_handle open_file(storage_index_t st, std::string const& p
+                , file_index_t file_index, std::int64_t const file_start, file_storage const& fs, open_mode_t m
+                , error_code& ec);
 		// release all files belonging to the specified storage_interface (``st``)
 		// the overload that takes ``file_index`` releases only the file with
 		// that index in storage ``st``.
@@ -91,8 +91,8 @@ namespace libtorrent {
 		void close_oldest();
 
 	private:
-
-		file_handle remove_oldest(std::unique_lock<std::mutex>&);
+//	    std::string m_save_path;
+        file_handle remove_oldest(std::unique_lock<std::mutex>&);
 
 		int m_size;
 		bool m_low_prio_io = false;
@@ -100,14 +100,15 @@ namespace libtorrent {
 		struct lru_file_entry
 		{
 			file_handle file_ptr;
-			time_point const opened{aux::time_now()};
+			time_point opened{aux::time_now()};
 			time_point last_use{opened};
 			open_mode_t mode{};
+            std::int64_t start;
 		};
 
 		// maps storage pointer, file index pairs to the
 		// LRU entry for the file
-		std::map<std::pair<storage_index_t, file_index_t>, lru_file_entry> m_files;
+        std::vector<std::pair<std::pair<storage_index_t, file_index_t>, lru_file_entry>> m_files;
 		mutable std::mutex m_mutex;
 	};
 

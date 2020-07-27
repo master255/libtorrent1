@@ -111,7 +111,7 @@ namespace libtorrent { namespace aux {
 	// do with the file and the buffers.
 	int readwritev(file_storage const& files, span<iovec_t const> const bufs
 		, piece_index_t const piece, const int offset
-		, storage_error& ec, fileop op)
+		, bool const parts_enabled, std::vector<std::pair<file_index_t, std::int64_t>> parts_map, storage_error& ec, fileop op)
 	{
 		TORRENT_ASSERT(piece >= piece_index_t(0));
 		TORRENT_ASSERT(piece < files.end_piece());
@@ -171,16 +171,62 @@ namespace libtorrent { namespace aux {
 					file_bytes_left = std::max(static_cast<int>(files.file_size(file_index) - file_offset), 0);
 			}
 
-			// make a copy of the iovec array that _just_ covers the next
-			// file_bytes_left bytes, i.e. just this one operation
-			int const tmp_bufs_used = copy_bufs(current_buf, file_bytes_left, tmp_buf);
+            int bytes_transferred;
+            std::int64_t file_start = -1;
+            if (parts_enabled) {
+                if (parts_map.empty()) {
+                    file_start = 0;
+                    // make a copy of the iovec array that _just_ covers the next
+                    // file_bytes_left bytes, i.e. just this one operation
+                    int const tmp_bufs_used = copy_bufs(current_buf, file_bytes_left, tmp_buf);
+                    bytes_transferred = op(file_index, file_offset, file_start, tmp_buf.first(tmp_bufs_used), ec);
+                    if (ec) return -1;
 
-			int const bytes_transferred = op(file_index, file_offset
-				, tmp_buf.first(tmp_bufs_used), ec);
-			if (ec) return -1;
+                    // advance our position in the iovec array and the file offset.
+                    current_buf = advance_bufs(current_buf, bytes_transferred);
+                } else {
+                    file_start = 0;
+                    auto i = parts_map.begin(), end(parts_map.end());
+                    for (; i != end; ++i) {
+                        if (i->first == file_index && file_offset >= i->second && file_start <= i->second) {
+                            file_start = i->second;
+                        }
+                    }
+                    std::int64_t next_start = -1;
+                    std::int64_t data_end = file_offset + size;
+                    i = parts_map.begin();
+                    for (; i != end; ++i) {
+                        if (i->first == file_index && data_end >= i->second && next_start <= i->second) {
+                            next_start = i->second;
+                        }
+                    }
+                    if (file_start < next_start) {
+                        int const first_size = int(next_start - file_offset);
+                        int tmp_bufs_used = copy_bufs(current_buf, first_size, tmp_buf);
+                        bytes_transferred = op(file_index, file_offset, file_start, tmp_buf.first(tmp_bufs_used), ec);
 
-			// advance our position in the iovec array and the file offset.
-			current_buf = advance_bufs(current_buf, bytes_transferred);
+                        if (ec) return -1;
+                        current_buf = advance_bufs(current_buf, bytes_transferred);
+
+                        tmp_bufs_used = copy_bufs(current_buf, file_bytes_left - first_size, tmp_buf);
+                        int const bytes_trans = op(file_index, next_start, next_start, tmp_buf.first(tmp_bufs_used), ec);
+                        if (ec) return -1;
+                        current_buf = advance_bufs(current_buf, bytes_trans);
+                        bytes_transferred += bytes_trans;
+                    } else {
+                        int const tmp_bufs_used = copy_bufs(current_buf, file_bytes_left, tmp_buf);
+                        bytes_transferred = op(file_index, file_offset, file_start, tmp_buf.first(tmp_bufs_used),ec);
+                        if (ec) return -1;
+                        current_buf = advance_bufs(current_buf, bytes_transferred);
+                    }
+                }
+            } else {
+                int const tmp_bufs_used = copy_bufs(current_buf, file_bytes_left, tmp_buf);
+                bytes_transferred = op(file_index, file_offset, -1, tmp_buf.first(tmp_bufs_used), ec);
+                if (ec) return -1;
+                current_buf = advance_bufs(current_buf, bytes_transferred);
+            }
+
 			bytes_left -= bytes_transferred;
 			file_offset += bytes_transferred;
 

@@ -685,9 +685,19 @@ namespace libtorrent {
 		return sync_call_ret<storage_interface*>(nullptr, &torrent::get_storage_impl);
 	}
 
-	void torrent_handle::add_part(std::int64_t start_byte, std::string save_path) const
+	void torrent_handle::add_part(file_index_t const index, std::int64_t const start_byte) const
     {
-    	async_call(&torrent::add_part, start_byte, save_path);
+    	async_call(&torrent::add_part, index, start_byte);
+    }
+
+    void torrent_handle::set_parts_enabled(bool const parts_enabled) const
+    {
+        async_call(&torrent::set_parts_enabled, parts_enabled);
+    }
+
+    void torrent_handle::set_sequential_start(piece_index_t piece) const
+    {
+        async_call(&torrent::set_sequential_start, piece);
     }
 
 	bool torrent_handle::is_valid() const

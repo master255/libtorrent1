@@ -84,6 +84,7 @@ namespace libtorrent {
 	default_storage::default_storage(storage_params const& params
 		, file_pool& pool)
 		: storage_interface(params.files)
+        , parts_enabled(params.parts_enabled)
 		, m_file_priority(params.priorities)
 		, m_pool(pool)
 		, m_allocate_files(params.mode == storage_mode_allocate)
@@ -134,7 +135,7 @@ namespace libtorrent {
 			if (old_prio == dont_download && new_prio != dont_download)
 			{
 				// move stuff out of the part file
-				file_handle f = open_file(i, open_mode::read_write, ec);
+                file_handle f = open_file(i, parts_enabled ? 0 : -1, open_mode::read_write, ec);
 				if (ec)
 				{
 					prio = m_file_priority;
@@ -362,7 +363,7 @@ namespace libtorrent {
 					// just creating the file is enough to make it zero-sized. If
 					// there's a race here and some other process truncates the file,
 					// it's not a problem, we won't access empty files ever again
-					file_handle f = open_file(file_index, open_mode::read_write
+                    file_handle f = open_file(file_index, parts_enabled ? 0 : -1, open_mode::read_write
 						| open_mode::random_access, ec);
 					if (ec) return;
 				}
@@ -487,10 +488,6 @@ namespace libtorrent {
 		m_stat_cache.clear();
 	}
 
-	void default_storage::add_part(std::int64_t start_byte, std::string save_path) {
-        //parts_map.insert(std::make_pair(start_byte, save_path));
-    }
-
 	void default_storage::delete_files(remove_flags_t const options, storage_error& ec)
 	{
 		// make sure we don't have the files open
@@ -527,6 +524,17 @@ namespace libtorrent {
 		return ret;
 	}
 
+    void default_storage::add_part(file_index_t const index, std::int64_t const start_byte) {
+        std::pair <file_index_t, std::int64_t> new_part;
+        new_part.first = index;
+        new_part.second = start_byte;
+        parts_map.push_back(new_part);
+    }
+
+    void default_storage::set_parts_enabled(bool const enabled) {
+        parts_enabled = enabled;
+    }
+
 	int default_storage::readv(span<iovec_t const> bufs
 		, piece_index_t const piece, int const offset
 		, open_mode_t const flags, storage_error& error)
@@ -534,9 +542,10 @@ namespace libtorrent {
 #ifdef TORRENT_SIMULATE_SLOW_READ
 		std::this_thread::sleep_for(seconds(1));
 #endif
-		return readwritev(files(), bufs, piece, offset, error
+		return readwritev(files(), bufs, piece, offset, parts_enabled, parts_map, error
 			, [this, flags](file_index_t const file_index
 				, std::int64_t const file_offset
+                , std::int64_t const file_start
 				, span<iovec_t const> vec, storage_error& ec)
 		{
 			if (files().pad_file_at(file_index))
@@ -568,14 +577,16 @@ namespace libtorrent {
 				return ret;
 			}
 
-			file_handle handle = open_file(file_index
-				, open_mode::read_only | flags, ec);
+            file_handle handle = open_file(file_index, file_start, open_mode::read_only | flags, ec);
 			if (ec) return -1;
 
 			error_code e;
-			int const ret = int(handle->readv(file_offset
-				, vec, e, flags));
-
+            int ret;
+            if (file_start == -1) {
+                ret = int(handle->readv(file_offset, vec, e, flags));
+            } else {
+                ret = int(handle->readv(file_offset - file_start, vec, e, flags));
+            }
 			// set this unconditionally in case the upper layer would like to treat
 			// short reads as errors
 			ec.operation = operation_t::file_read;
@@ -599,9 +610,10 @@ namespace libtorrent {
 		, piece_index_t const piece, int const offset
 		, open_mode_t const flags, storage_error& error)
 	{
-		return readwritev(files(), bufs, piece, offset, error
+		return readwritev(files(), bufs, piece, offset, parts_enabled, parts_map, error
 			, [this, flags](file_index_t const file_index
 				, std::int64_t const file_offset
+                , std::int64_t const file_start
 				, span<iovec_t const> vec, storage_error& ec)
 		{
 			if (files().pad_file_at(file_index))
@@ -636,13 +648,17 @@ namespace libtorrent {
 			// we're writing to it
 			m_stat_cache.set_dirty(file_index);
 
-			file_handle handle = open_file(file_index
-				, open_mode::read_write, ec);
+            file_handle handle = open_file(file_index, file_start
+                    , open_mode::read_write, ec);
 			if (ec) return -1;
 
 			error_code e;
-			int const ret = int(handle->writev(file_offset
-				, vec, e, flags));
+			int ret;
+			if (file_start == -1) {
+                ret = int(handle->writev(file_offset, vec, e, flags));
+            } else {
+                ret = int(handle->writev(file_offset - file_start, vec, e, flags));
+			}
 
 			// set this unconditionally in case the upper layer would like to treat
 			// short reads as errors
@@ -663,17 +679,17 @@ namespace libtorrent {
 		});
 	}
 
-	file_handle default_storage::open_file(file_index_t const file
-		, open_mode_t mode, storage_error& ec) const
+    file_handle default_storage::open_file(file_index_t const file
+            , std::int64_t const file_start, open_mode_t mode, storage_error& ec) const
 	{
-		file_handle h = open_file_impl(file, mode, ec.ec);
+        file_handle h = open_file_impl(file, file_start, mode, ec.ec);
 		if (((mode & open_mode::rw_mask) != open_mode::read_only)
 			&& ec.ec == boost::system::errc::no_such_file_or_directory)
 		{
 			// this means the directory the file is in doesn't exist.
 			// so create it
 			ec.ec.clear();
-			std::string path = files().file_path(file, m_save_path);
+			std::string path = files().file_path(file, m_save_path, file_start);
 			create_directories(parent_path(path), ec.ec);
 
 			if (ec.ec)
@@ -685,7 +701,7 @@ namespace libtorrent {
 
 			// if the directory creation failed, don't try to open the file again
 			// but actually just fail
-			h = open_file_impl(file, mode, ec.ec);
+			h = open_file_impl(file, file_start, mode, ec.ec);
 		}
 		if (ec.ec)
 		{
@@ -741,8 +757,8 @@ namespace libtorrent {
 		return h;
 	}
 
-	file_handle default_storage::open_file_impl(file_index_t file, open_mode_t mode
-		, error_code& ec) const
+    file_handle default_storage::open_file_impl(file_index_t file, std::int64_t const file_start
+            , open_mode_t mode, error_code& ec) const
 	{
 		if (!m_allocate_files) mode |= open_mode::sparse;
 
@@ -763,8 +779,8 @@ namespace libtorrent {
 			mode |= open_mode::no_cache;
 		}
 
-		file_handle ret = m_pool.open_file(storage_index(), m_save_path, file
-			, files(), mode, ec);
+        file_handle ret = m_pool.open_file(storage_index(), m_save_path, file
+                , file_start, files(), mode, ec);
 		return ret;
 	}
 
@@ -807,10 +823,13 @@ namespace {
 			void delete_files(remove_flags_t, storage_error&) override {}
 			void initialize(storage_error&) override {}
 			status_t move_storage(std::string const&, move_flags_t, storage_error&) override { return status_t::no_error; }
-            void add_part(std::int64_t start_byte, std::string save_path) override {
+            void add_part(file_index_t const index, std::int64_t const start_byte) override {
+            (void)index;
             (void)start_byte;
-            (void)save_path;
             }
+            void set_parts_enabled(bool const parts_enabled) override {
+                (void)parts_enabled;
+			}
 			int readv(span<iovec_t const> bufs
 				, piece_index_t, int, open_mode_t, storage_error&) override
 			{
@@ -861,10 +880,13 @@ namespace {
 				return std::accumulate(bufs.begin(), bufs.end(), 0
 					, [](int const acc, iovec_t const& b) { return acc + int(b.size()); });
 			}
-            void add_part(std::int64_t start_byte, std::string save_path) override {
+            void add_part(file_index_t const index, std::int64_t const start_byte) override {
+                        (void)index;
                         (void)start_byte;
-                        (void)save_path;
                         }
+            void set_parts_enabled(bool const parts_enabled) override {
+                (void)parts_enabled;
+            }
 			bool has_any_file(storage_error&) override { return false; }
 			void set_file_priority(aux::vector<download_priority_t, file_index_t>& /* prio */
 				, storage_error&) override {}

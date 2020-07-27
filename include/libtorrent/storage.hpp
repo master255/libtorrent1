@@ -217,7 +217,9 @@ namespace libtorrent {
 		//
 		virtual void release_files(storage_error& ec) = 0;
 
-        virtual void add_part(std::int64_t start_byte, std::string save_path) = 0;
+        virtual void add_part(file_index_t const index, std::int64_t const start_byte) = 0;
+
+        virtual void set_parts_enabled(bool const parts_enabled) = 0;
 		// Rename the file with index ``file`` to name ``new_name``.
 		//
 		// If an error occurs, ``storage_error`` should be set to reflect it.
@@ -338,7 +340,6 @@ namespace libtorrent {
 		void rename_file(file_index_t index, std::string const& new_filename
 			, storage_error& ec) override;
 		void release_files(storage_error& ec) override;
-		void add_part(std::int64_t start_byte, std::string save_path) override;
 		void delete_files(remove_flags_t options, storage_error& ec) override;
 		void initialize(storage_error& ec) override;
 		status_t move_storage(std::string const& save_path
@@ -347,7 +348,8 @@ namespace libtorrent {
 			, aux::vector<std::string, file_index_t> const& links
 			, storage_error& error) override;
 		bool tick() override;
-
+        void add_part(file_index_t const index, std::int64_t start_byte) override;
+        void set_parts_enabled(bool const parts_enabled) override;
 		int readv(span<iovec_t const> bufs
 			, piece_index_t piece, int offset, open_mode_t flags, storage_error& ec) override;
 		int writev(span<iovec_t const> bufs
@@ -361,6 +363,8 @@ namespace libtorrent {
 		}
 
 	private:
+        bool parts_enabled;
+        std::vector<std::pair<file_index_t, std::int64_t>> parts_map;
 
 		void need_partfile();
 
@@ -373,8 +377,8 @@ namespace libtorrent {
 		mutable stat_cache m_stat_cache;
 
 		// helper function to open a file in the file pool with the right mode
-		file_handle open_file(file_index_t file, open_mode_t mode, storage_error& ec) const;
-		file_handle open_file_impl(file_index_t file, open_mode_t mode, error_code& ec) const;
+        file_handle open_file(file_index_t file, std::int64_t file_start, open_mode_t mode, storage_error& ec) const;
+        file_handle open_file_impl(file_index_t file, std::int64_t file_start, open_mode_t mode, error_code& ec) const;
 
 		bool use_partfile(file_index_t index) const;
 		void use_partfile(file_index_t index, bool b);
@@ -408,8 +412,6 @@ namespace libtorrent {
 		// case of sparse allocation mode
 		mutable std::mutex m_file_created_mutex;
 		mutable typed_bitfield<file_index_t> m_file_created;
-
-        std::map<std::int64_t, std::string> parts_map;
 
 		bool m_allocate_files;
 	};

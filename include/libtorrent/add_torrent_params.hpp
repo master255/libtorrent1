@@ -114,6 +114,7 @@ TORRENT_VERSION_NAMESPACE_2
 			DECL_FLAG(update_subscribe);
 			DECL_FLAG(super_seeding);
 			DECL_FLAG(sequential_download);
+			DECL_FLAG(parts_enabled);
 			DECL_FLAG(pinned);
 			DECL_FLAG(stop_when_ready);
 			DECL_FLAG(override_trackers);

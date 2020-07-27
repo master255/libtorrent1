@@ -100,9 +100,10 @@ namespace libtorrent {
 #endif // TORRENT_WINDOWS
 
 	file_handle file_pool::open_file(storage_index_t st, std::string const& p
-		, file_index_t const file_index, file_storage const& fs
+		, file_index_t const file_index, std::int64_t const file_start, file_storage const& fs
 		, open_mode_t const m, error_code& ec)
 	{
+//        m_save_path=p;
 		// potentially used to hold a reference to a file object that's
 		// about to be destructed. If we have such object we assign it to
 		// this member to be destructed after we release the std::mutex. On some
@@ -115,7 +116,15 @@ namespace libtorrent {
 		TORRENT_ASSERT(is_complete(p));
 		TORRENT_ASSERT((m & open_mode::rw_mask) == open_mode::read_only
 			|| (m & open_mode::rw_mask) == open_mode::read_write);
-		auto const i = m_files.find(std::make_pair(st, file_index));
+        std::pair <storage_index_t, file_index_t> find_item = std::make_pair(st, file_index);
+        auto i = m_files.begin(), end(m_files.end());
+        for (; i != end; ++i) {
+            if (i->first == find_item) {
+                if (i->second.start == file_start) {
+                    break;
+                }
+            }
+        }
 		if (i != m_files.end())
 		{
 			lru_file_entry& e = i->second;
@@ -130,7 +139,7 @@ namespace libtorrent {
 			{
 				file_handle new_file = std::make_shared<file>();
 
-				std::string full_path = fs.file_path(file_index, p);
+				std::string full_path = fs.file_path(file_index, p, file_start);
 				if (!new_file->open(full_path, m, ec))
 					return file_handle();
 #ifdef TORRENT_WINDOWS
@@ -153,17 +162,18 @@ namespace libtorrent {
 			ec = error_code(boost::system::errc::not_enough_memory, generic_category());
 			return file_handle();
 		}
-		std::string full_path = fs.file_path(file_index, p);
+		std::string full_path = fs.file_path(file_index, p, file_start);
 		if (!e.file_ptr->open(full_path, m, ec))
 			return file_handle();
 #ifdef TORRENT_WINDOWS
 		if (m_low_prio_io)
 			set_low_priority(e.file_ptr);
 #endif
-		e.mode = m;
-		file_handle file_ptr = e.file_ptr;
-		m_files.insert(std::make_pair(std::make_pair(st, file_index), e));
-		TORRENT_ASSERT(file_ptr->is_open());
+        e.mode = m;
+        e.start = file_start;
+        file_handle file_ptr = e.file_ptr;
+        m_files.push_back(std::make_pair(std::make_pair(st, file_index), e));
+        TORRENT_ASSERT(file_ptr->is_open());
 
 		if (int(m_files.size()) >= m_size)
 		{
@@ -199,18 +209,26 @@ namespace libtorrent {
 
 	std::vector<open_file_state> file_pool::get_status(storage_index_t const st) const
 	{
+//        file_handle new_file = std::make_shared<file>();
+//        std::string full_path = m_save_path + "/status0 ";
+//        error_code ee;
+//        new_file->open(full_path, open_mode::read_write, ee);
+
 		std::vector<open_file_state> ret;
 		{
 			std::unique_lock<std::mutex> l(m_mutex);
 
-			auto const start = m_files.lower_bound(std::make_pair(st, file_index_t(0)));
-			auto const end = m_files.upper_bound(std::make_pair(st
-				, std::numeric_limits<file_index_t>::max()));
-
-			for (auto i = start; i != end; ++i)
-			{
-				ret.push_back({i->first.second, to_file_open_mode(i->second.mode)
-					, i->second.last_use});
+//            new_file = std::make_shared<file>();
+//            full_path = m_save_path + "/status ";
+//            new_file->open(full_path, open_mode::read_write, ee);
+//			auto const start = m_files.lower_bound(std::make_pair(st, file_index_t(0)));
+//			auto const end = m_files.upper_bound(std::make_pair(st
+//				, std::numeric_limits<file_index_t>::max()));
+            for (auto i = m_files.begin(), end(m_files.end()); i != end; ++i)
+            {
+                if (i->first.first == st) {
+                    ret.push_back({i->first.second, to_file_open_mode(i->second.mode), i->second.last_use});
+                }
 			}
 		}
 		return ret;
@@ -218,6 +236,11 @@ namespace libtorrent {
 
 	file_handle file_pool::remove_oldest(std::unique_lock<std::mutex>&)
 	{
+//        file_handle new_file = std::make_shared<file>();
+//        std::string full_path = m_save_path + "/rem old mt ";
+//        error_code ee;
+//        new_file->open(full_path, open_mode::read_write, ee);
+
 		using value_type = decltype(m_files)::value_type;
 		auto const i = std::min_element(m_files.begin(), m_files.end()
 			, [] (value_type const& lhs, value_type const& rhs)
@@ -234,18 +257,28 @@ namespace libtorrent {
 
 	void file_pool::release(storage_index_t const st, file_index_t file_index)
 	{
-		std::unique_lock<std::mutex> l(m_mutex);
+//        file_handle new_file = std::make_shared<file>();
+//        std::string full_path = m_save_path + "/release ";
+//        error_code ee;
+//        new_file->open(full_path, open_mode::read_write, ee);
 
-		auto const i = m_files.find(std::make_pair(st, file_index));
-		if (i == m_files.end()) return;
+	    for (auto i = m_files.begin(), end(m_files.end()); i != end; ++i) {
+            if (i->first.first == st && i->first.second == file_index) {
+                std::unique_lock <std::mutex> l(m_mutex);
 
-		file_handle file_ptr = i->second.file_ptr;
-		m_files.erase(i);
+//            auto const i = m_files.find(std::make_pair(st, file_index));
 
-		// closing a file may take a long time (mac os x), so make sure
-		// we're not holding the mutex
-		l.unlock();
-		file_ptr.reset();
+                if (i == m_files.end()) return;
+
+                file_handle file_ptr = i->second.file_ptr;
+                m_files.erase(i);
+
+                // closing a file may take a long time (mac os x), so make sure
+                // we're not holding the mutex
+                l.unlock();
+                file_ptr.reset();
+            }
+        }
 	}
 
 	// closes files belonging to the specified
@@ -259,16 +292,41 @@ namespace libtorrent {
 
 	void file_pool::release(storage_index_t const st)
 	{
+//        file_handle new_file = std::make_shared<file>();
+//        std::string full_path = m_save_path + "/release st ";
+//        error_code ee;
+//        new_file->open(full_path, open_mode::read_write, ee);
+
 		std::unique_lock<std::mutex> l(m_mutex);
 
-		auto const begin = m_files.lower_bound(std::make_pair(st, file_index_t(0)));
-		auto const end = m_files.upper_bound(std::make_pair(st
-				, std::numeric_limits<file_index_t>::max()));
+//		auto const begin = m_files.lower_bound(std::make_pair(st, file_index_t(0)));
+//		auto const end = m_files.upper_bound(std::make_pair(st
+//				, std::numeric_limits<file_index_t>::max()));
 
 		std::vector<file_handle> to_close;
-		for (auto it = begin; it != end; ++it)
-			to_close.push_back(std::move(it->second.file_ptr));
-		if (!to_close.empty()) m_files.erase(begin, end);
+        auto it = m_files.begin(), end(m_files.end());
+//        int count=0;
+		for (; it != end;) {
+		    if (it->first.first == st && m_files.size() > 0) {
+//                new_file = std::make_shared<file>();
+//                count++;
+//                full_path = m_save_path + "/release stt "+std::to_string(count);
+//                new_file->open(full_path, open_mode::read_write, ee);
+
+                to_close.push_back(std::move(it->second.file_ptr));
+//                new_file = std::make_shared<file>();
+//                full_path = m_save_path + "/release ste "+std::to_string(count);
+//                new_file->open(full_path, open_mode::read_write, ee);
+                it = m_files.erase(it);
+
+//                new_file = std::make_shared<file>();
+//                full_path = m_save_path + "/release sty "+std::to_string(count);
+//                new_file->open(full_path, open_mode::read_write, ee);
+            } else {
+                ++it;
+		    }
+        }
+//		if (!to_close.empty()) m_files.erase(begin, end);
 		l.unlock();
 		// the files are closed here while the lock is not held
 	}
@@ -293,6 +351,11 @@ namespace libtorrent {
 
 	void file_pool::close_oldest()
 	{
+//        file_handle new_file = std::make_shared<file>();
+//        std::string full_path = m_save_path + "/clos old ";
+//        error_code ee;
+//        new_file->open(full_path, open_mode::read_write, ee);
+
 		std::unique_lock<std::mutex> l(m_mutex);
 
 		using value_type = decltype(m_files)::value_type;

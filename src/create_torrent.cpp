@@ -312,7 +312,8 @@ namespace {
 			path,
 			storage_mode_t::storage_mode_sparse,
 			priorities,
-			info_hash
+			info_hash,
+			false
 		};
 
 		storage_holder storage = disk_thread.new_torrent(default_storage_constructor

@@ -472,7 +472,7 @@ namespace libtorrent {
 		sha1_hash hash(file_index_t index) const;
 		std::string const& symlink(file_index_t index) const;
 		std::time_t mtime(file_index_t index) const;
-		std::string file_path(file_index_t index, std::string const& save_path = "") const;
+		std::string file_path(file_index_t index, std::string const& save_path = "", std::int64_t file_start = -1) const;
 		string_view file_name(file_index_t index) const;
 		std::int64_t file_size(file_index_t index) const;
 		bool pad_file_at(file_index_t index) const;

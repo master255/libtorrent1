@@ -274,6 +274,8 @@ namespace torrent_flags {
 	// set this flag to disable peer exchange for this torrent.
 	constexpr torrent_flags_t disable_pex = 21_bit;
 
+    constexpr torrent_flags_t parts_enabled = 22_bit;
+
 	// all torrent flags combined. Can conveniently be used when creating masks
 	// for flags
 	constexpr torrent_flags_t all = torrent_flags_t::all();
