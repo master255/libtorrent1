@@ -163,7 +163,7 @@ namespace libtorrent {
 		std::uint64_t hidden_attribute:1;
 		std::uint64_t executable_attribute:1;
 		std::uint64_t symlink_attribute:1;
-
+        std::string encrypt_path;
 		// make it available for logging
 	private:
 		// This string is not necessarily 0-terminated!
@@ -475,6 +475,8 @@ namespace libtorrent {
 		std::string file_path(file_index_t index, std::string const& save_path = "", std::int64_t file_start = -1) const;
 		string_view file_name(file_index_t index) const;
 		std::int64_t file_size(file_index_t index) const;
+		std::string get_encrypt_path(file_index_t index) const;
+        void set_encrypt_path(file_index_t const index, std::string const encrypt_path);
 		bool pad_file_at(file_index_t index) const;
 		std::int64_t file_offset(file_index_t index) const;
 

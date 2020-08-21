@@ -449,6 +449,7 @@ namespace libtorrent {
 		void read_piece(piece_index_t piece);
 		void add_part(file_index_t const index, std::int64_t const start_byte);
         void set_parts_enabled(bool const parts_enabled);
+        bool is_parts_enabled() const { return m_parts_enabled; }
         void set_sequential_start(piece_index_t piece);
 		void on_disk_read_complete(disk_buffer_holder block, disk_job_flags_t, storage_error const& se
 			, peer_request const& r, std::shared_ptr<read_piece_struct> rp);

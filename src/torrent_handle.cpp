@@ -695,6 +695,11 @@ namespace libtorrent {
         async_call(&torrent::set_parts_enabled, parts_enabled);
     }
 
+    bool torrent_handle::is_parts_enabled() const
+    {
+        return sync_call_ret<bool>(false, &torrent::is_parts_enabled);
+    }
+
     void torrent_handle::set_sequential_start(piece_index_t piece) const
     {
         async_call(&torrent::set_sequential_start, piece);

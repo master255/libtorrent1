@@ -219,17 +219,17 @@ namespace libtorrent {
 			std::unique_lock<std::mutex> l(m_mutex);
 
 //            new_file = std::make_shared<file>();
-//            full_path = m_save_path + "/status ";
+//            full_path = m_save_path + "/status create";
 //            new_file->open(full_path, open_mode::read_write, ee);
-//			auto const start = m_files.lower_bound(std::make_pair(st, file_index_t(0)));
-//			auto const end = m_files.upper_bound(std::make_pair(st
-//				, std::numeric_limits<file_index_t>::max()));
             for (auto i = m_files.begin(), end(m_files.end()); i != end; ++i)
             {
                 if (i->first.first == st) {
                     ret.push_back({i->first.second, to_file_open_mode(i->second.mode), i->second.last_use});
                 }
 			}
+//            new_file = std::make_shared<file>();
+//            full_path = m_save_path + "/status ready"+std::to_string(ret.size());
+//            new_file->open(full_path, open_mode::read_write, ee);
 		}
 		return ret;
 	}
@@ -258,7 +258,7 @@ namespace libtorrent {
 	void file_pool::release(storage_index_t const st, file_index_t file_index)
 	{
 //        file_handle new_file = std::make_shared<file>();
-//        std::string full_path = m_save_path + "/release ";
+//        std::string full_path = m_save_path + "/release file";
 //        error_code ee;
 //        new_file->open(full_path, open_mode::read_write, ee);
 
@@ -266,12 +266,14 @@ namespace libtorrent {
             if (i->first.first == st && i->first.second == file_index) {
                 std::unique_lock <std::mutex> l(m_mutex);
 
-//            auto const i = m_files.find(std::make_pair(st, file_index));
-
                 if (i == m_files.end()) return;
 
                 file_handle file_ptr = i->second.file_ptr;
                 m_files.erase(i);
+
+//                new_file = std::make_shared<file>();
+//                full_path = m_save_path + "/release1 file";
+//                new_file->open(full_path, open_mode::read_write, ee);
 
                 // closing a file may take a long time (mac os x), so make sure
                 // we're not holding the mutex
@@ -279,6 +281,9 @@ namespace libtorrent {
                 file_ptr.reset();
             }
         }
+//        new_file = std::make_shared<file>();
+//        full_path = m_save_path + "/release file count "+std::to_string(m_files.size());
+//        new_file->open(full_path, open_mode::read_write, ee);
 	}
 
 	// closes files belonging to the specified
@@ -293,40 +298,30 @@ namespace libtorrent {
 	void file_pool::release(storage_index_t const st)
 	{
 //        file_handle new_file = std::make_shared<file>();
-//        std::string full_path = m_save_path + "/release st ";
+//        std::string full_path = m_save_path + "/release storage";
 //        error_code ee;
 //        new_file->open(full_path, open_mode::read_write, ee);
 
 		std::unique_lock<std::mutex> l(m_mutex);
-
-//		auto const begin = m_files.lower_bound(std::make_pair(st, file_index_t(0)));
-//		auto const end = m_files.upper_bound(std::make_pair(st
-//				, std::numeric_limits<file_index_t>::max()));
 
 		std::vector<file_handle> to_close;
         auto it = m_files.begin(), end(m_files.end());
 //        int count=0;
 		for (; it != end;) {
 		    if (it->first.first == st && m_files.size() > 0) {
+                to_close.push_back(std::move(it->second.file_ptr));
+                it = m_files.erase(it);
 //                new_file = std::make_shared<file>();
 //                count++;
-//                full_path = m_save_path + "/release stt "+std::to_string(count);
-//                new_file->open(full_path, open_mode::read_write, ee);
-
-                to_close.push_back(std::move(it->second.file_ptr));
-//                new_file = std::make_shared<file>();
-//                full_path = m_save_path + "/release ste "+std::to_string(count);
-//                new_file->open(full_path, open_mode::read_write, ee);
-                it = m_files.erase(it);
-
-//                new_file = std::make_shared<file>();
-//                full_path = m_save_path + "/release sty "+std::to_string(count);
+//                full_path = m_save_path + "/release storage "+std::to_string(count);
 //                new_file->open(full_path, open_mode::read_write, ee);
             } else {
                 ++it;
 		    }
         }
-//		if (!to_close.empty()) m_files.erase(begin, end);
+//        new_file = std::make_shared<file>();
+//        full_path = m_save_path + "/release storage count "+std::to_string(m_files.size());
+//        new_file->open(full_path, open_mode::read_write, ee);
 		l.unlock();
 		// the files are closed here while the lock is not held
 	}
@@ -352,7 +347,7 @@ namespace libtorrent {
 	void file_pool::close_oldest()
 	{
 //        file_handle new_file = std::make_shared<file>();
-//        std::string full_path = m_save_path + "/clos old ";
+//        std::string full_path = m_save_path + "/close oldest";
 //        error_code ee;
 //        new_file->open(full_path, open_mode::read_write, ee);
 

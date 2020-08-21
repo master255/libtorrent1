@@ -552,6 +552,8 @@ namespace aux {
 		// torrent will become invalid.
 		bool is_valid() const;
 
+        bool is_parts_enabled() const;
+
 		// will delay the disconnect of peers that we're still downloading
 		// outstanding requests from. The torrent will not accept any more
 		// requests and will disconnect all idle peers. As soon as a peer is done
