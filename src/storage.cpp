@@ -539,144 +539,267 @@ namespace libtorrent {
 		, piece_index_t const piece, int const offset
 		, open_mode_t const flags, storage_error& error)
 	{
-#ifdef TORRENT_SIMULATE_SLOW_READ
-		std::this_thread::sleep_for(seconds(1));
-#endif
-		return readwritev(files(), bufs, piece, offset, parts_enabled, parts_map, error
-			, [this, flags](file_index_t const file_index
-				, std::int64_t const file_offset
-                , std::int64_t const file_start
-				, span<iovec_t const> vec, storage_error& ec)
-		{
-			if (files().pad_file_at(file_index))
-			{
-				// reading from a pad file yields zeroes
-				aux::clear_bufs(vec);
-				return bufs_size(vec);
-			}
+	    if (parts_enabled) {
+            return readwritevs(files(), bufs, piece, offset, parts_map, error
+                , [this, flags](file_index_t const file_index
+                    , std::int64_t const file_offset
+                    , std::int64_t const file_start
+                    , span<iovec_t const> vec, storage_error& ec)
+            {
+                if (files().pad_file_at(file_index))
+                {
+                    // reading from a pad file yields zeroes
+                    aux::clear_bufs(vec);
+                    return bufs_size(vec);
+                }
 
-			if (file_index < m_file_priority.end_index()
-				&& m_file_priority[file_index] == dont_download
-				&& use_partfile(file_index))
-			{
-				TORRENT_ASSERT(m_part_file);
+                if (file_index < m_file_priority.end_index()
+                    && m_file_priority[file_index] == dont_download
+                    && use_partfile(file_index))
+                {
+                    TORRENT_ASSERT(m_part_file);
 
-				error_code e;
-				peer_request map = files().map_file(file_index
-					, file_offset, 0);
-				int const ret = m_part_file->readv(vec
-					, map.piece, map.start, e);
+                    error_code e;
+                    peer_request map = files().map_file(file_index
+                        , file_offset, 0);
+                    int const ret = m_part_file->readv(vec
+                        , map.piece, map.start, e);
 
-				if (e)
-				{
-					ec.ec = e;
-					ec.file(file_index);
-					ec.operation = operation_t::partfile_read;
-					return -1;
-				}
-				return ret;
-			}
+                    if (e)
+                    {
+                        ec.ec = e;
+                        ec.file(file_index);
+                        ec.operation = operation_t::partfile_read;
+                        return -1;
+                    }
+                    return ret;
+                }
 
-            file_handle handle = open_file(file_index, file_start, open_mode::read_only | flags, ec);
-			if (ec) return -1;
+                file_handle handle = open_file(file_index, file_start, open_mode::read_only | flags, ec);
+                if (ec) return -1;
 
-			error_code e;
-            int ret;
-            if (file_start == -1) {
-                ret = int(handle->readv(file_offset, vec, e, flags));
-            } else {
-                ret = int(handle->readv(file_offset - file_start, vec, e, flags));
-            }
-			// set this unconditionally in case the upper layer would like to treat
-			// short reads as errors
-			ec.operation = operation_t::file_read;
+                error_code e;
+                int ret;
+                if (file_start == -1) {
+                    ret = int(handle->readv(file_offset, vec, e, flags));
+                } else {
+                    ret = int(handle->readv(file_offset - file_start, vec, e, flags));
+                }
 
-			// we either get an error or 0 or more bytes read
-			TORRENT_ASSERT(e || ret >= 0);
-			TORRENT_ASSERT(ret <= bufs_size(vec));
+                // set this unconditionally in case the upper layer would like to treat
+                // short reads as errors
+                ec.operation = operation_t::file_read;
 
-			if (e)
-			{
-				ec.ec = e;
-				ec.file(file_index);
-				return -1;
-			}
+                // we either get an error or 0 or more bytes read
+                TORRENT_ASSERT(e || ret >= 0);
+                TORRENT_ASSERT(ret <= bufs_size(vec));
 
-			return ret;
-		});
+                if (e)
+                {
+                    ec.ec = e;
+                    ec.file(file_index);
+                    return -1;
+                }
+
+                return ret;
+            });
+		} else {
+            return readwritev(files(), bufs, piece, offset, error
+    , [this, flags](file_index_t const file_index
+            , std::int64_t const file_offset
+            , span<iovec_t const> vec, storage_error& ec)
+              {
+                  if (files().pad_file_at(file_index))
+                  {
+                      // reading from a pad file yields zeroes
+                      aux::clear_bufs(vec);
+                      return bufs_size(vec);
+                  }
+
+                  if (file_index < m_file_priority.end_index()
+                      && m_file_priority[file_index] == dont_download
+                      && use_partfile(file_index))
+                  {
+                      TORRENT_ASSERT(m_part_file);
+
+                      error_code e;
+                      peer_request map = files().map_file(file_index
+                              , file_offset, 0);
+                      int const ret = m_part_file->readv(vec
+                              , map.piece, map.start, e);
+
+                      if (e)
+                      {
+                          ec.ec = e;
+                          ec.file(file_index);
+                          ec.operation = operation_t::partfile_read;
+                          return -1;
+                      }
+                      return ret;
+                  }
+
+                  file_handle handle = open_file(file_index, -1, open_mode::read_only | flags, ec);
+                  if (ec) return -1;
+
+                  error_code e;
+                  int const ret = int(handle->readv(file_offset
+                          , vec, e, flags));
+
+                  // set this unconditionally in case the upper layer would like to treat
+                  // short reads as errors
+                  ec.operation = operation_t::file_read;
+
+                  // we either get an error or 0 or more bytes read
+                  TORRENT_ASSERT(e || ret >= 0);
+                  TORRENT_ASSERT(ret <= bufs_size(vec));
+
+                  if (e)
+                  {
+                      ec.ec = e;
+                      ec.file(file_index);
+                      return -1;
+                  }
+
+                  return ret;
+              });
+	    }
 	}
 
 	int default_storage::writev(span<iovec_t const> bufs
 		, piece_index_t const piece, int const offset
 		, open_mode_t const flags, storage_error& error)
 	{
-		return readwritev(files(), bufs, piece, offset, parts_enabled, parts_map, error
-			, [this, flags](file_index_t const file_index
-				, std::int64_t const file_offset
-                , std::int64_t const file_start
-				, span<iovec_t const> vec, storage_error& ec)
-		{
-			if (files().pad_file_at(file_index))
-			{
-				// writing to a pad-file is a no-op
-				return bufs_size(vec);
-			}
+	    if (parts_enabled) {
+            return readwritevs(files(), bufs, piece, offset, parts_map, error
+                , [this, flags](file_index_t const file_index
+                    , std::int64_t const file_offset
+                    , std::int64_t const file_start
+                    , span<iovec_t const> vec, storage_error& ec)
+            {
+                if (files().pad_file_at(file_index))
+                {
+                    // writing to a pad-file is a no-op
+                    return bufs_size(vec);
+                }
 
-			if (file_index < m_file_priority.end_index()
-				&& m_file_priority[file_index] == dont_download
-				&& use_partfile(file_index))
-			{
-				TORRENT_ASSERT(m_part_file);
+                if (file_index < m_file_priority.end_index()
+                    && m_file_priority[file_index] == dont_download
+                    && use_partfile(file_index))
+                {
+                    TORRENT_ASSERT(m_part_file);
 
-				error_code e;
-				peer_request map = files().map_file(file_index
-					, file_offset, 0);
-				int const ret = m_part_file->writev(vec
-					, map.piece, map.start, e);
+                    error_code e;
+                    peer_request map = files().map_file(file_index
+                        , file_offset, 0);
+                    int const ret = m_part_file->writev(vec
+                        , map.piece, map.start, e);
 
-				if (e)
-				{
-					ec.ec = e;
-					ec.file(file_index);
-					ec.operation = operation_t::partfile_write;
-					return -1;
-				}
-				return ret;
-			}
+                    if (e)
+                    {
+                        ec.ec = e;
+                        ec.file(file_index);
+                        ec.operation = operation_t::partfile_write;
+                        return -1;
+                    }
+                    return ret;
+                }
 
-			// invalidate our stat cache for this file, since
-			// we're writing to it
-			m_stat_cache.set_dirty(file_index);
+                // invalidate our stat cache for this file, since
+                // we're writing to it
+                m_stat_cache.set_dirty(file_index);
 
-            file_handle handle = open_file(file_index, file_start
-                    , open_mode::read_write, ec);
-			if (ec) return -1;
+                file_handle handle = open_file(file_index, file_start
+                        , open_mode::read_write, ec);
+                if (ec) return -1;
 
-			error_code e;
-			int ret;
-			if (file_start == -1) {
-                ret = int(handle->writev(file_offset, vec, e, flags));
-            } else {
-                ret = int(handle->writev(file_offset - file_start, vec, e, flags));
-			}
+                error_code e;
+                int ret;
+                if (file_start == -1) {
+                    ret = int(handle->writev(file_offset, vec, e, flags));
+                } else {
+                    ret = int(handle->writev(file_offset - file_start, vec, e, flags));
+                }
 
-			// set this unconditionally in case the upper layer would like to treat
-			// short reads as errors
-			ec.operation = operation_t::file_write;
+                // set this unconditionally in case the upper layer would like to treat
+                // short reads as errors
+                ec.operation = operation_t::file_write;
 
-			// we either get an error or 0 or more bytes read
-			TORRENT_ASSERT(e || ret >= 0);
-			TORRENT_ASSERT(ret <= bufs_size(vec));
+                // we either get an error or 0 or more bytes read
+                TORRENT_ASSERT(e || ret >= 0);
+                TORRENT_ASSERT(ret <= bufs_size(vec));
 
-			if (e)
-			{
-				ec.ec = e;
-				ec.file(file_index);
-				return -1;
-			}
+                if (e)
+                {
+                    ec.ec = e;
+                    ec.file(file_index);
+                    return -1;
+                }
 
-			return ret;
-		});
+                return ret;
+            });
+		} else {
+            return readwritev(files(), bufs, piece, offset, error, [this, flags](file_index_t const file_index
+            , std::int64_t const file_offset
+            , span<iovec_t const> vec, storage_error& ec)
+              {
+                  if (files().pad_file_at(file_index))
+                  {
+                      // writing to a pad-file is a no-op
+                      return bufs_size(vec);
+                  }
+
+                  if (file_index < m_file_priority.end_index()
+                      && m_file_priority[file_index] == dont_download
+                      && use_partfile(file_index))
+                  {
+                      TORRENT_ASSERT(m_part_file);
+
+                      error_code e;
+                      peer_request map = files().map_file(file_index
+                              , file_offset, 0);
+                      int const ret = m_part_file->writev(vec
+                              , map.piece, map.start, e);
+
+                      if (e)
+                      {
+                          ec.ec = e;
+                          ec.file(file_index);
+                          ec.operation = operation_t::partfile_write;
+                          return -1;
+                      }
+                      return ret;
+                  }
+
+                  // invalidate our stat cache for this file, since
+                  // we're writing to it
+                  m_stat_cache.set_dirty(file_index);
+
+                  file_handle handle = open_file(file_index, -1
+                          , open_mode::read_write, ec);
+                  if (ec) return -1;
+
+                  error_code e;
+                  int const ret = int(handle->writev(file_offset
+                          , vec, e, flags));
+
+                  // set this unconditionally in case the upper layer would like to treat
+                  // short reads as errors
+                  ec.operation = operation_t::file_write;
+
+                  // we either get an error or 0 or more bytes read
+                  TORRENT_ASSERT(e || ret >= 0);
+                  TORRENT_ASSERT(ret <= bufs_size(vec));
+
+                  if (e)
+                  {
+                      ec.ec = e;
+                      ec.file(file_index);
+                      return -1;
+                  }
+
+                  return ret;
+              });
+	    }
 	}
 
     file_handle default_storage::open_file(file_index_t const file
