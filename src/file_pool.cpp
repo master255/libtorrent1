@@ -261,26 +261,27 @@ namespace libtorrent {
 //        std::string full_path = m_save_path + "/release file";
 //        error_code ee;
 //        new_file->open(full_path, open_mode::read_write, ee);
-
+        std::unique_lock <std::mutex> l(m_mutex);
+        file_handle file_ptr;
 	    for (auto i = m_files.begin(), end(m_files.end()); i != end; ++i) {
             if (i->first.first == st && i->first.second == file_index) {
-                std::unique_lock <std::mutex> l(m_mutex);
+
 
                 if (i == m_files.end()) return;
 
-                file_handle file_ptr = i->second.file_ptr;
+                file_ptr = i->second.file_ptr;
                 m_files.erase(i);
-
 //                new_file = std::make_shared<file>();
 //                full_path = m_save_path + "/release1 file";
 //                new_file->open(full_path, open_mode::read_write, ee);
 
                 // closing a file may take a long time (mac os x), so make sure
                 // we're not holding the mutex
-                l.unlock();
-                file_ptr.reset();
+                break;
             }
         }
+        l.unlock();
+        file_ptr.reset();
 //        new_file = std::make_shared<file>();
 //        full_path = m_save_path + "/release file count "+std::to_string(m_files.size());
 //        new_file->open(full_path, open_mode::read_write, ee);
