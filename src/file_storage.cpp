@@ -39,7 +39,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/aux_/disable_warnings_push.hpp"
 #include <boost/crc.hpp>
-#include "boost/lexical_cast.hpp"
 #include "libtorrent/aux_/disable_warnings_pop.hpp"
 
 #include <cstdio>
@@ -792,7 +791,7 @@ namespace {
 		return crc.checksum();
 	}
 
-	std::string file_storage::file_path(file_index_t const index, std::string const& save_path, std::int64_t const file_start) const
+	std::string file_storage::file_path(file_index_t const index, std::string const& save_path) const
 	{
 		TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
 		internal_file_entry const& fe = m_files[index];
@@ -831,13 +830,6 @@ namespace {
 			append_path(ret, fe.filename());
 		}
 
-        if (file_start > -1) {
-            if (file_start == 0){
-                ret = ret + "-ml0_" + boost::lexical_cast<std::string>(fe.size);
-            } else {
-                ret = ret + "-ml" + boost::lexical_cast<std::string>(file_start);
-            }
-        }
 		// a single return statement, just to make NRVO more likely to kick in
 		return ret;
 	}

@@ -106,14 +106,13 @@ namespace libtorrent {
 		storage_params(file_storage const& f, file_storage const* mf
 			, std::string const& sp, storage_mode_t const sm
 			, aux::vector<download_priority_t, file_index_t> const& prio
-			, sha1_hash const& ih, bool const pm)
+			, sha1_hash const& ih)
 			: files(f)
 			, mapped_files(mf)
 			, path(sp)
 			, mode(sm)
 			, priorities(prio)
 			, info_hash(ih)
-            , parts_enabled(pm)
 		{}
 		file_storage const& files;
 		file_storage const* mapped_files = nullptr; // optional
@@ -121,7 +120,6 @@ namespace libtorrent {
 		storage_mode_t mode{storage_mode_sparse};
 		aux::vector<download_priority_t, file_index_t> const& priorities;
 		sha1_hash const& info_hash;
-        bool const parts_enabled;
 	};
 
 	using storage_constructor_type = std::function<storage_interface*(storage_params const& params, file_pool&)>;

@@ -447,9 +447,6 @@ namespace libtorrent {
 			error_code error;
 		};
 		void read_piece(piece_index_t piece);
-		void add_part(file_index_t const index, std::int64_t const start_byte);
-        void set_parts_enabled(bool const parts_enabled);
-        bool is_parts_enabled() const { return m_parts_enabled; }
         void set_sequential_start(piece_index_t piece);
 		void on_disk_read_complete(disk_buffer_holder block, disk_job_flags_t, storage_error const& se
 			, peer_request const& r, std::shared_ptr<read_piece_struct> rp);
@@ -476,8 +473,6 @@ namespace libtorrent {
 		void set_sequential_download(bool sd);
 		bool is_sequential_download() const
 		{ return m_sequential_download || m_auto_sequential; }
-
-        void set_parts_enabled_local(bool pe);
 
 		void queue_up();
 		void queue_down();
@@ -1576,8 +1571,6 @@ namespace libtorrent {
 		// when this settings is set, this variable will keep
 		// its value until the piece picker is created
 		bool m_sequential_download:1;
-
-        bool m_parts_enabled:1;
 
 		// this is set if the auto_sequential setting is true and this swarm
 		// satisfies the criteria to be considered high-availability. i.e. if

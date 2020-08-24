@@ -2122,8 +2122,7 @@ namespace {
 				}
 				else
 				{
-                    piece_index_t i = m_cursor > sequential_start ? m_cursor : sequential_start;
-					for (; i < m_reverse_cursor; ++i)
+					for (piece_index_t i = m_cursor > sequential_start ? m_cursor : sequential_start; i < m_reverse_cursor; ++i)
 					{
 						if (!is_piece_free(i, pieces)) continue;
 						// we've already added high priority pieces

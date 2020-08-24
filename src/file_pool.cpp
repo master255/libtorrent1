@@ -100,10 +100,9 @@ namespace libtorrent {
 #endif // TORRENT_WINDOWS
 
 	file_handle file_pool::open_file(storage_index_t st, std::string const& p
-		, file_index_t const file_index, std::int64_t const file_start, file_storage const& fs
+		, file_index_t const file_index, file_storage const& fs
 		, open_mode_t const m, error_code& ec)
 	{
-//        m_save_path=p;
 		// potentially used to hold a reference to a file object that's
 		// about to be destructed. If we have such object we assign it to
 		// this member to be destructed after we release the std::mutex. On some
@@ -120,75 +119,51 @@ namespace libtorrent {
 		if (i != m_files.end())
 		{
 			lru_file_entry& e = i->second;
-            if (file_start != -1) {
-                auto const ptr = e.file_ptrs.find(file_start);
-                if (ptr != e.file_ptrs.end()) {
-                    e.last_use = aux::time_now();
-                    if ((((e.mode & open_mode::rw_mask) != open_mode::read_write) && ((m & open_mode::rw_mask) == open_mode::read_write)) || (e.mode & open_mode::random_access) != (m & open_mode::random_access)) {
-                        file_handle new_file = std::make_shared<file>();
-                        std::string full_path = fs.file_path(file_index, p, file_start);
-                        if (!new_file->open(full_path, m, ec))
-                            return file_handle();
-#ifdef TORRENT_WINDOWS
-                        if (m_low_prio_io)
-                        set_low_priority(new_file);
-#endif
-                        TORRENT_ASSERT(new_file->is_open());
-                        e.file_ptrs.insert(std::make_pair(file_start, new_file));
-                        e.mode = m;
-                        return new_file;
-                    }
-                    return ptr->second;
-                }
-            } else {
-                e.last_use = aux::time_now();
+			e.last_use = aux::time_now();
 
-                // if we asked for a file in write mode,
-                // and the cached file is is not opened in
-                // write mode, re-open it
-                if ((((e.mode & open_mode::rw_mask) != open_mode::read_write)
-                     && ((m & open_mode::rw_mask) == open_mode::read_write))
-                    || (e.mode & open_mode::random_access) != (m & open_mode::random_access)) {
-                    file_handle new_file = std::make_shared<file>();
+			// if we asked for a file in write mode,
+			// and the cached file is is not opened in
+			// write mode, re-open it
+			if ((((e.mode & open_mode::rw_mask) != open_mode::read_write)
+				&& ((m & open_mode::rw_mask) == open_mode::read_write))
+				|| (e.mode & open_mode::random_access) != (m & open_mode::random_access))
+			{
+				file_handle new_file = std::make_shared<file>();
 
-                    std::string full_path = fs.file_path(file_index, p, file_start);
-                    if (!new_file->open(full_path, m, ec))
-                        return file_handle();
+				std::string full_path = fs.file_path(file_index, p);
+				if (!new_file->open(full_path, m, ec))
+					return file_handle();
 #ifdef TORRENT_WINDOWS
-                    if (m_low_prio_io)
-                        set_low_priority(new_file);
+				if (m_low_prio_io)
+					set_low_priority(new_file);
 #endif
 
-                    TORRENT_ASSERT(new_file->is_open());
-                    defer_destruction = std::move(e.file_ptr);
-                    e.file_ptr = std::move(new_file);
-                    e.mode = m;
-                }
-                return e.file_ptr;
-            }
+				TORRENT_ASSERT(new_file->is_open());
+				defer_destruction = std::move(e.file_ptr);
+				e.file_ptr = std::move(new_file);
+				e.mode = m;
+			}
+			return e.file_ptr;
 		}
 
 		lru_file_entry e;
-		file_handle file_ptr= std::make_shared<file>();
-		if (!file_ptr)
+		e.file_ptr = std::make_shared<file>();
+		if (!e.file_ptr)
 		{
 			ec = error_code(boost::system::errc::not_enough_memory, generic_category());
 			return file_handle();
 		}
-		std::string full_path = fs.file_path(file_index, p, file_start);
-		if (!file_ptr->open(full_path, m, ec))
+		std::string full_path = fs.file_path(file_index, p);
+		if (!e.file_ptr->open(full_path, m, ec))
 			return file_handle();
 #ifdef TORRENT_WINDOWS
 		if (m_low_prio_io)
-			set_low_priority(file_ptr);
+			set_low_priority(e.file_ptr);
 #endif
-        e.mode = m;
-        if (file_start>-1)
-            e.file_ptrs.insert(std::make_pair(file_start, file_ptr));
-        else
-            e.file_ptr = file_ptr;
-        m_files.insert(std::make_pair(std::make_pair(st, file_index), e));
-        TORRENT_ASSERT(file_ptr->is_open());
+		e.mode = m;
+		file_handle file_ptr = e.file_ptr;
+		m_files.insert(std::make_pair(std::make_pair(st, file_index), e));
+		TORRENT_ASSERT(file_ptr->is_open());
 
 		if (int(m_files.size()) >= m_size)
 		{
@@ -284,11 +259,6 @@ namespace libtorrent {
 
 	void file_pool::release(storage_index_t const st)
 	{
-//        file_handle new_file = std::make_shared<file>();
-//        std::string full_path = m_save_path + "/release storage";
-//        error_code ee;
-//        new_file->open(full_path, open_mode::read_write, ee);
-
 		std::unique_lock<std::mutex> l(m_mutex);
 
 		auto const begin = m_files.lower_bound(std::make_pair(st, file_index_t(0)));

@@ -175,7 +175,8 @@ namespace libtorrent { namespace aux {
 			// file_bytes_left bytes, i.e. just this one operation
 			int const tmp_bufs_used = copy_bufs(current_buf, file_bytes_left, tmp_buf);
 
-			int const bytes_transferred = op(file_index, file_offset, tmp_buf.first(tmp_bufs_used), ec);
+			int const bytes_transferred = op(file_index, file_offset
+				, tmp_buf.first(tmp_bufs_used), ec);
 			if (ec) return -1;
 
 			// advance our position in the iovec array and the file offset.
@@ -199,135 +200,6 @@ namespace libtorrent { namespace aux {
 		}
 		return size;
 	}
-
-    int readwritevs(file_storage const& files, span<iovec_t const> const bufs, piece_index_t const piece, const int offset, std::vector<std::pair<file_index_t, std::int64_t>> parts_map, storage_error& ec, fileops op)
-        {
-            TORRENT_ASSERT(piece >= piece_index_t(0));
-            TORRENT_ASSERT(piece < files.end_piece());
-            TORRENT_ASSERT(offset >= 0);
-            TORRENT_ASSERT(bufs.size() > 0);
-
-            const int size = bufs_size(bufs);
-            TORRENT_ASSERT(size > 0);
-            TORRENT_ASSERT(static_cast<int>(piece) * static_cast<std::int64_t>(files.piece_length())
-                           + offset + size <= files.total_size());
-
-            // find the file iterator and file offset
-            std::int64_t const torrent_offset = static_cast<int>(piece) * std::int64_t(files.piece_length()) + offset;
-            file_index_t file_index = files.file_index_at_offset(torrent_offset);
-            TORRENT_ASSERT(torrent_offset >= files.file_offset(file_index));
-            TORRENT_ASSERT(torrent_offset < files.file_offset(file_index) + files.file_size(file_index));
-            std::int64_t file_offset = torrent_offset - files.file_offset(file_index);
-
-            // the number of bytes left before this read or write operation is
-            // completely satisfied.
-            int bytes_left = size;
-
-            TORRENT_ASSERT(bytes_left >= 0);
-
-            // copy the iovec array so we can use it to keep track of our current
-            // location by updating the head base pointer and size. (see
-            // advance_bufs())
-            TORRENT_ALLOCA(current_buf, iovec_t, bufs.size());
-            copy_bufs(bufs, size, current_buf);
-            TORRENT_ASSERT(count_bufs(current_buf, size) == int(bufs.size()));
-
-            TORRENT_ALLOCA(tmp_buf, iovec_t, bufs.size());
-
-            while (bytes_left > 0)
-            {
-                // the number of bytes left to read in the current file (specified by
-                // file_index). This is the minimum of (file_size - file_offset) and
-                // bytes_left.
-                int file_bytes_left = bytes_left;
-                if (file_offset + file_bytes_left > files.file_size(file_index))
-                    file_bytes_left = std::max(static_cast<int>(files.file_size(file_index) - file_offset), 0);
-
-                // there are no bytes left in this file, move to the next one
-                // this loop skips over empty files
-                while (file_bytes_left == 0)
-                {
-                    ++file_index;
-                    file_offset = 0;
-                    TORRENT_ASSERT(file_index < files.end_file());
-
-                    // this should not happen. bytes_left should be clamped by the total
-                    // size of the torrent, so we should never run off the end of it
-                    if (file_index >= files.end_file()) return size;
-
-                    file_bytes_left = bytes_left;
-                    if (file_offset + file_bytes_left > files.file_size(file_index))
-                        file_bytes_left = std::max(static_cast<int>(files.file_size(file_index) - file_offset), 0);
-                }
-
-                int bytes_transferred;
-                std::int64_t file_start = -1;
-                if (parts_map.empty()) {
-                    file_start = 0;
-                    // make a copy of the iovec array that _just_ covers the next
-                    // file_bytes_left bytes, i.e. just this one operation
-                    int const tmp_bufs_used = copy_bufs(current_buf, file_bytes_left, tmp_buf);
-                    bytes_transferred = op(file_index, file_offset, file_start, tmp_buf.first(tmp_bufs_used), ec);
-                    if (ec) return -1;
-
-                    // advance our position in the iovec array and the file offset.
-                    current_buf = advance_bufs(current_buf, bytes_transferred);
-                } else {
-                    file_start = 0;
-                    auto i = parts_map.begin(), end(parts_map.end());
-                    for (; i != end; ++i) {
-                        if (i->first == file_index && file_offset >= i->second && file_start <= i->second) {
-                            file_start = i->second;
-                        }
-                    }
-                    std::int64_t next_start = -1;
-                    std::int64_t data_end = file_offset + size;
-                    i = parts_map.begin();
-                    for (; i != end; ++i) {
-                        if (i->first == file_index && data_end >= i->second && next_start <= i->second) {
-                            next_start = i->second;
-                        }
-                    }
-                    if (file_start < next_start) {
-                        int const first_size = int(next_start - file_offset);
-                        int tmp_bufs_used = copy_bufs(current_buf, first_size, tmp_buf);
-                        bytes_transferred = op(file_index, file_offset, file_start, tmp_buf.first(tmp_bufs_used), ec);
-
-                        if (ec) return -1;
-                        current_buf = advance_bufs(current_buf, bytes_transferred);
-
-                        tmp_bufs_used = copy_bufs(current_buf, file_bytes_left - first_size, tmp_buf);
-                        int const bytes_trans = op(file_index, next_start, next_start, tmp_buf.first(tmp_bufs_used), ec);
-                        if (ec) return -1;
-                        current_buf = advance_bufs(current_buf, bytes_trans);
-                        bytes_transferred += bytes_trans;
-                    } else {
-                        int const tmp_bufs_used = copy_bufs(current_buf, file_bytes_left, tmp_buf);
-                        bytes_transferred = op(file_index, file_offset, file_start, tmp_buf.first(tmp_bufs_used),ec);
-                        if (ec) return -1;
-                        current_buf = advance_bufs(current_buf, bytes_transferred);
-                    }
-                }
-
-                bytes_left -= bytes_transferred;
-                file_offset += bytes_transferred;
-
-                TORRENT_ASSERT(count_bufs(current_buf, bytes_left) <= int(bufs.size()));
-
-                // if the file operation returned 0, we've hit end-of-file. We're done
-                if (bytes_transferred == 0)
-                {
-                    if (file_bytes_left > 0 )
-                    {
-                        // fill in this information in case the caller wants to treat
-                        // a short-read as an error
-                        ec.file(file_index);
-                    }
-                    return size - bytes_left;
-                }
-            }
-            return size;
-        }
 
 	std::pair<status_t, std::string> move_storage(file_storage const& f
 		, std::string const& save_path

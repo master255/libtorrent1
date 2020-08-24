@@ -296,10 +296,6 @@ namespace aux {
 		// guaranteed to finish in the same order as you initiated them.
 		void read_piece(piece_index_t piece) const;
 
-		void add_part(file_index_t const index, std::int64_t const start_byte) const;
-
-		void set_parts_enabled(bool const parts_enabled) const;
-
         void set_sequential_start(piece_index_t piece) const;
 		// Returns true if this piece has been completely downloaded and written
 		// to disk, and false otherwise.
@@ -551,8 +547,6 @@ namespace aux {
 		// file_error_alert is generated and all handles that refers to that
 		// torrent will become invalid.
 		bool is_valid() const;
-
-        bool is_parts_enabled() const;
 
 		// will delay the disconnect of peers that we're still downloading
 		// outstanding requests from. The torrent will not accept any more
