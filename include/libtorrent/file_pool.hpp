@@ -100,15 +100,15 @@ namespace libtorrent {
 		struct lru_file_entry
 		{
 			file_handle file_ptr;
-			time_point opened{aux::time_now()};
+			time_point const opened{aux::time_now()};
 			time_point last_use{opened};
 			open_mode_t mode{};
-            std::int64_t start;
+            std::map<std::int64_t, file_handle> file_ptrs;
 		};
 
 		// maps storage pointer, file index pairs to the
 		// LRU entry for the file
-        std::vector<std::pair<std::pair<storage_index_t, file_index_t>, lru_file_entry>> m_files;
+		std::map<std::pair<storage_index_t, file_index_t>, lru_file_entry> m_files;
 		mutable std::mutex m_mutex;
 	};
 
