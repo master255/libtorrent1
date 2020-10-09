@@ -230,6 +230,7 @@ namespace {
 		, hidden_attribute(fe.hidden_attribute)
 		, executable_attribute(fe.executable_attribute)
 		, symlink_attribute(fe.symlink_attribute)
+        , encrypt_path(fe.encrypt_path)
 		, name(nullptr)
 		, path_index(fe.path_index)
 	{
@@ -251,6 +252,7 @@ namespace {
 		no_root_dir = fe.no_root_dir;
 		// if the name is not owned, don't allocate memory, we can point into the
 		// same metadata buffer
+        encrypt_path = fe.encrypt_path;
 		bool const borrow = fe.name_len != name_is_owned;
 		set_name(fe.filename(), borrow);
 		return *this;
@@ -266,6 +268,7 @@ namespace {
 		, hidden_attribute(fe.hidden_attribute)
 		, executable_attribute(fe.executable_attribute)
 		, symlink_attribute(fe.symlink_attribute)
+        , encrypt_path(fe.encrypt_path)
 		, name(fe.name)
 		, path_index(fe.path_index)
 	{
@@ -287,7 +290,7 @@ namespace {
 		no_root_dir = fe.no_root_dir;
 		name = fe.name;
 		name_len = fe.name_len;
-
+        encrypt_path = fe.encrypt_path;
 		fe.name_len = 0;
 		fe.name = nullptr;
 		return *this;
@@ -869,6 +872,18 @@ namespace {
 		TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
 		return m_files[index].size;
 	}
+
+    std::string file_storage::get_encrypt_path(file_index_t const index) const
+    {
+        TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
+        return m_files[index].encrypt_path;
+    }
+
+    void file_storage::set_encrypt_path(file_index_t const index, std::string const encrypt_path)
+    {
+        TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
+        m_files[index].encrypt_path = encrypt_path;
+    }
 
 	bool file_storage::pad_file_at(file_index_t const index) const
 	{

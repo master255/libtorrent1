@@ -403,6 +403,8 @@ namespace libtorrent {
 		void get_download_queue_sizes(int* partial
 			, int* full, int* finished, int* zero_prio) const;
 
+		void set_sequential_start(piece_index_t piece);
+
 		torrent_peer* get_downloader(piece_block block) const;
 
 
@@ -753,7 +755,7 @@ namespace libtorrent {
 		index_range<download_queue_t> categories() const
 		{ return {{}, piece_picker::piece_pos::num_download_categories}; }
 #endif
-
+        piece_index_t sequential_start {0};
 		// the following vectors are mutable because they sometimes may
 		// be updated lazily, triggered by const functions
 
