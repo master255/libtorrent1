@@ -55,6 +55,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/peer_info.hpp" // for peer_list_entry
 #endif
 
+#if TORRENT_ABI_VERSION == 1 && defined TORRENT_WINDOWS
+#include "libtorrent/aux_/escape_string.hpp"
+#endif
+
 using libtorrent::aux::session_impl;
 
 namespace libtorrent {
@@ -242,16 +246,18 @@ namespace libtorrent {
 		async_call(&torrent::move_storage, save_path, static_cast<move_flags_t>(flags));
 	}
 
+#if defined TORRENT_WINDOWS
 	void torrent_handle::move_storage(
 		std::wstring const& save_path, int flags) const
 	{
-		async_call(&torrent::move_storage, wchar_utf8(save_path), static_cast<move_flags_t>(flags));
+		async_call(&torrent::move_storage, convert_from_wstring(save_path), static_cast<move_flags_t>(flags));
 	}
 
 	void torrent_handle::rename_file(file_index_t index, std::wstring const& new_name) const
 	{
-		async_call(&torrent::rename_file, index, wchar_utf8(new_name));
+		async_call(&torrent::rename_file, index, convert_from_wstring(new_name));
 	}
+#endif // TORRENT_WINDOWS
 #endif // TORRENT_ABI_VERSION
 
 	void torrent_handle::rename_file(file_index_t index, std::string const& new_name) const
@@ -684,11 +690,6 @@ namespace libtorrent {
 	{
 		return sync_call_ret<storage_interface*>(nullptr, &torrent::get_storage_impl);
 	}
-
-    void torrent_handle::set_sequential_start(piece_index_t piece) const
-    {
-        async_call(&torrent::set_sequential_start, piece);
-    }
 
 	bool torrent_handle::is_valid() const
 	{

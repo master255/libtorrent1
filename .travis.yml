@@ -1,5 +1,5 @@
 language: cpp
-dist: bionic
+dist: focal
 
 matrix:
   fast_finish: true
@@ -14,20 +14,17 @@ matrix:
       os: osx
       osx_image: xcode11.2
     - env: variant=debug toolset=gcc pylint=1 clang_tidy=1
-      addons:
-        apt:
-          packages:
-          - python3-pip
     - env: variant=test_debug tests=1 toolset=gcc sanitizer=on fuzzers=1
     - env: variant=test_debug sim=1 crypto=openssl toolset=gcc sanitizer=on
     - env: variant=test_release coverage=1 tests=1 toolset=gcc-coverage
-    - env: autotools=1 toolset=gcc install_boost=1
-    - env: cmake=1 toolset=gcc install_boost=1
-    - env: arch=arm toolset=gcc-arm
-      addons:
-        apt:
-          packages:
-          - libboost-tools-dev
+    - env: autotools=1 toolset=gcc
+    - env: cmake=1 toolset=gcc
+    - env: toolset=gcc tests=1 variant=test_debug
+      os: linux
+      arch: arm64
+    - env: toolset=gcc tests=1 variant=test_debug
+      os: linux
+      arch: s390x
 
 notifications:
   email: false
@@ -52,8 +49,11 @@ cache:
 addons:
   apt:
     packages:
-    - python3.7-dev
+    - python3-pip
+    - python3.8-dev
     - ninja-build
+    - libboost-all-dev
+    - libboost-tools-dev
 
 before_install:
 
@@ -61,60 +61,37 @@ before_install:
       export sonar_scan=0;
     fi'
 
-  # pull down a recent version of boost and build boost-build
-  - 'if [[ "$arch" != "arm" ]]; then
-      cd $HOME;
-      if [[ ! -d boost/.git ]]; then
-        git clone --depth=1 --branch=boost-1.72.0 https://github.com/boostorg/boost.git;
-      fi;
-      export BOOST_ROOT=$PWD/boost;
-      echo ${BOOST_ROOT};
-      cd boost;
-      git submodule update --init --depth=1;
-      ./bootstrap.sh;
-      ./b2 headers;
-      if [[ "$install_boost" = "1" ]]; then
-        sudo ./b2 cxxstd=11 release install --with-python --with-system | grep -v "^common.copy " | grep -v "^\.\.\.skipped " | grep -v "th target\.\.\.$";
-        cd tools/build;
-        ./bootstrap.sh;
-        echo "installing boost.build";
-        sudo ./b2 install --prefix=/usr/;
-        sudo ln -s /usr/local/lib/libboost_python37.so /usr/local/lib/libboost_python.so;
-        sudo ln -s /usr/local/lib/libboost_python36.so /usr/local/lib/libboost_python3.so;
-      fi;
-    fi'
-  - export PATH=$BOOST_ROOT:$PATH
-
   - cd $TRAVIS_BUILD_DIR
   - git submodule update --init --recursive
   - 'if [[ $crypto == "" ]]; then export crypto=built-in; fi'
   - 'if [[ $sanitizer == "" ]]; then export sanitizer=off; fi'
-  - 'if [[ $TRAVIS_OS_NAME == "osx" ]]; then
-    travis_retry brew update > /dev/null && brew install ccache;
-    fi'
-  - 'if [[ $TRAVIS_OS_NAME == "osx" && "$python" == "1" ]]; then
-      brew unlink python@2;
-      travis_retry brew install python;
-    fi'
-  - 'if [[ "$python" == "1" ]]; then
-       which python3;
-       python3 --version;
-    fi'
   - 'if [[ $TRAVIS_OS_NAME != "osx" ]]; then
       export B2=b2;
       export PIP=pip;
     else
       export B2=b2;
-      export PIP=pip3;
+      export PIP="python -m pip";
       sysctl hw.ncpu;
+    fi'
+  - 'if [[ $TRAVIS_OS_NAME == "osx" ]]; then
+      travis_retry brew install ccache boost-build boost-python3;
     fi'
   # we have to use python from brew rather than the system provided python
   # because of OSX System Integrity Protection, which prevents injecting
   # user-libraries (i.e. python modules) into system binaries (i.e. /usr/bin/python)
+  # it's important to install the brew python version before any pip packages,
+  # as the pip packages may break if the version of python they used gets pulled
+  # from under them
   - 'if [ "$docs" = "1" ]; then
-    ${PIP} install docutils;
-    ${PIP} install Pygments;
-    travis_retry brew install graphviz hunspell imagemagick;
+       travis_retry brew install graphviz hunspell imagemagick;
+       ${PIP} install docutils;
+       ${PIP} install Pygments;
+       ${PIP} install aafigure;
+    fi'
+  - 'if [[ "$python" == "1" || "$docs" == "1" ]]; then
+       which python3;
+       which pip3;
+       python3 --version;
     fi'
 
   - if [ "$coverage" == "1" ]; then
@@ -137,17 +114,6 @@ install:
   - 'if [[ $toolset == "gcc-coverage" ]]; then
       echo "using gcc : coverage : ccache g++ --coverage : <cxxflags>-std=c++11 <linkflags>--coverage ;" >> ~/user-config.jam;
     fi'
-  - 'if [[ $toolset == "gcc-arm" ]]; then
-      echo "using gcc : arm : ccache armv8l-linux-gnueabihf-g++ :
-        <cxxflags>-std=c++11
-        <cxxflags>-fsigned-char
-        <cxxflags>-march=armv8-a+crc
-        <cxxflags>-mfpu=crypto-neon-fp-armv8
-        <cxxflags>-DTORRENT_FORCE_ARM_CRC32
-        <linkflags>-lm
-        <linkflags>-static-libstdc++
-        <linkflags>-static-libgcc ;" >> ~/user-config.jam;
-    fi;'
   - 'if [ $clang_tidy == "1" ]; then
       echo "using clang_tidy : : clang-tidy "-checks=-clang-analyzer-core.*" : <cxxflags>-std=c++11 <cxxflags>-I/usr/local/clang-7.0.0/include/c++/v1 <cxxflags>-stdlib=libc++ <linkflags>-stdlib=libc++ ;" >> ~/user-config.jam;
     fi'
@@ -187,24 +153,6 @@ install:
   - ccache --show-stats
   - ccache --zero-stats
 
-  - 'if [[ "$arch" == "arm" ]]; then
-      cd test;
-      wget -O gcc-linaro.tar.xz https://releases.linaro.org/components/toolchain/binaries/5.3-2016.05/armv8l-linux-gnueabihf/gcc-linaro-5.3.1-2016.05-x86_64_armv8l-linux-gnueabihf.tar.xz;
-      tar xf gcc-linaro.tar.xz;
-      export PATH=${PWD}/gcc-linaro-5.3.1-2016.05-x86_64_armv8l-linux-gnueabihf/bin:${PATH};
-      armv8l-linux-gnueabihf-g++ --version;
-      wget -O boost.zip http://pilotfiber.dl.sourceforge.net/project/boost/boost/1.58.0/boost_1_58_0.zip;
-      unzip -qq boost.zip;
-      export BOOST_ROOT=$PWD/boost_1_58_0;
-      travis_retry sudo apt-get install -y qemu-user-static;
-      wget -O ubuntu-base.tar.gz http://cdimage.ubuntu.com/ubuntu-base/releases/14.04/release/ubuntu-base-14.04.5-base-armhf.tar.gz;
-      sudo mkdir rootfs;
-      sudo tar xf ubuntu-base.tar.gz -C rootfs;
-      sudo cp /usr/bin/qemu-arm-static rootfs/usr/bin/;
-      sudo chroot rootfs mount -t proc none /proc;
-      cd ..;
-    fi'
-
   - if [[ "$cmake" == "1" ]]; then
       which cmake;
       cmake --version;
@@ -214,7 +162,7 @@ script:
 
   - cd docs
   - 'if [ "$docs" == "1" ]; then
-      make spell-check html RST2HTML=rst2html.py AAFIGURE=echo;
+      make spell-check html RST2HTML=rst2html.py;
     fi'
   - cd ..
 
@@ -326,9 +274,3 @@ script:
     fi
 
   - ccache --show-stats
-
-  - cd test
-  - 'if [[ "$arch" == "arm" ]]; then
-      ${B2} arm-tests warnings-as-errors=on warnings=all crypto=$crypto variant=test_arm $toolset target-os=linux link=static testing.launcher="sudo cp -R bin rootfs/; sudo chroot rootfs";
-    fi'
-  - cd ..

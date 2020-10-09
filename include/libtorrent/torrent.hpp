@@ -447,7 +447,6 @@ namespace libtorrent {
 			error_code error;
 		};
 		void read_piece(piece_index_t piece);
-        void set_sequential_start(piece_index_t piece);
 		void on_disk_read_complete(disk_buffer_holder block, disk_job_flags_t, storage_error const& se
 			, peer_request const& r, std::shared_ptr<read_piece_struct> rp);
 
@@ -1477,11 +1476,7 @@ namespace libtorrent {
 		// used to post a message to defer disconnecting peers
 		std::vector<std::shared_ptr<peer_connection>> m_peers_to_disconnect;
 		aux::deferred_handler m_deferred_disconnect;
-#ifdef _M_AMD64
 		aux::handler_storage<96> m_deferred_handler_storage;
-#else
-		aux::handler_storage<64> m_deferred_handler_storage;
-#endif
 
 		// these are the peer IDs we've used for our outgoing peer connections for
 		// this torrent. If we get an incoming peer claiming to have one of these,

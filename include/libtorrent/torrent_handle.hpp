@@ -282,6 +282,9 @@ namespace aux {
 		// Since the data is written asynchronously, you may know that is passed
 		// or failed the hash check by waiting for piece_finished_alert or
 		// hash_failed_alert.
+		//
+		// Adding pieces while the torrent is being checked (i.e. in
+		// torrent_status::checking_files state) is not supported.
 		void add_piece(piece_index_t piece, char const* data, add_piece_flags_t flags = {}) const;
 
 		// This function starts an asynchronous read operation of the specified
@@ -296,7 +299,6 @@ namespace aux {
 		// guaranteed to finish in the same order as you initiated them.
 		void read_piece(piece_index_t piece) const;
 
-        void set_sequential_start(piece_index_t piece) const;
 		// Returns true if this piece has been completely downloaded and written
 		// to disk, and false otherwise.
 		bool have_piece(piece_index_t piece) const;
@@ -711,17 +713,17 @@ namespace aux {
 		//
 		//		for (alert* i : alerts)
 		//		{
-		//			if (alert_cast<save_resume_data_failed_alert>(a))
+		//			if (alert_cast<save_resume_data_failed_alert>(i))
 		//			{
-		//				process_alert(a);
+		//				process_alert(i);
 		//				--outstanding_resume_data;
 		//				continue;
 		//			}
 		//
-		//			save_resume_data_alert const* rd = alert_cast<save_resume_data_alert>(a);
+		//			save_resume_data_alert const* rd = alert_cast<save_resume_data_alert>(i);
 		//			if (rd == nullptr)
 		//			{
-		//				process_alert(a);
+		//				process_alert(i);
 		//				continue;
 		//			}
 		//
@@ -1213,10 +1215,12 @@ namespace aux {
 		// all wstring APIs are deprecated since 0.16.11
 		// instead, use the wchar -> utf8 conversion functions
 		// and pass in utf8 strings
+#ifdef TORRENT_WINDOWS
 		TORRENT_DEPRECATED
 		void move_storage(std::wstring const& save_path, int flags = 0) const;
 		TORRENT_DEPRECATED
 		void rename_file(file_index_t index, std::wstring const& new_name) const;
+#endif // TORRENT_WINDOWS
 
 		// Enables or disabled super seeding/initial seeding for this torrent.
 		// The torrent needs to be a seed for this to take effect.

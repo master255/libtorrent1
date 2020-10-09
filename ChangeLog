@@ -1,3 +1,33 @@
+1.2.10 released
+
+	* fix regression in python binding for move_storage()
+	* improve stat_file() performance on Windows
+	* fix issue with loading invalid torrents with only 0-sized files
+	* fix to avoid large stack allocations
+
+1.2.9 released
+
+	* add macro TORRENT_CXX11_ABI for clients building with C++14 against
+	  libtorrent build with C++11
+	* refreshed m4 scripts for autotools
+	* removed deprecated wstring overloads on non-windows systems
+	* drop dependency on Unicode's ConvertUTF code (which had a license
+	  incompatible with Debian)
+	* fix bugs exposed on big-endian systems
+	* fix detection of hard-links not being supported by filesystem
+	* fixed resume data regression for seeds with prio 0 files
+
+1.2.8 released
+
+	* validate UTF-8 encoding of client version strings from peers
+	* don't time out tracker announces as eagerly while resolving hostnames
+	* fix NAT-PMP shutdown issue
+	* improve hostname lookup by merging identical lookups
+	* fix network route enumeration for large routing tables
+	* fixed issue where pop_alerts() could return old, invalid alerts
+	* fix issue when receiving have-all message before the metadata
+	* don't leave lingering part files handles open
+	* disallow calling add_piece() during checking
 	* fix incorrect filename truncation at multi-byte character
 	* always announce listen port 1 when using a proxy
 

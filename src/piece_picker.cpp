@@ -367,11 +367,6 @@ namespace libtorrent {
 		*zero_prio = int(m_downloads[piece_pos::piece_zero_prio].size());
 	}
 
-    void piece_picker::set_sequential_start(piece_index_t const piece)
-    {
-        sequential_start = piece;
-    }
-
 	span<piece_picker::block_info> piece_picker::mutable_blocks_for_piece(
 		downloading_piece const& dp)
 	{
@@ -2084,20 +2079,20 @@ namespace {
 			if (m_dirty) update_pieces();
 			TORRENT_ASSERT(!m_dirty);
 
-//			for (auto i = m_pieces.begin();
-//				i != m_pieces.end() && piece_priority(*i) == top_priority; ++i)
-//			{
-//				if (!is_piece_free(*i, pieces)) continue;
-//
-//				ret |= picker_log_alert::prio_sequential_pieces;
-//
-//				num_blocks = add_blocks(*i, pieces
-//					, interesting_blocks, backup_blocks
-//					, backup_blocks2, num_blocks
-//					, prefer_contiguous_blocks, peer, suggested_pieces
-//					, options);
-//				if (num_blocks <= 0) return ret;
-//			}
+			for (auto i = m_pieces.begin();
+				i != m_pieces.end() && piece_priority(*i) == top_priority; ++i)
+			{
+				if (!is_piece_free(*i, pieces)) continue;
+
+				ret |= picker_log_alert::prio_sequential_pieces;
+
+				num_blocks = add_blocks(*i, pieces
+					, interesting_blocks, backup_blocks
+					, backup_blocks2, num_blocks
+					, prefer_contiguous_blocks, peer, suggested_pieces
+					, options);
+				if (num_blocks <= 0) return ret;
+			}
 
 			// in time critical mode, only pick high priority pieces
 			if (!(options & time_critical_mode))
@@ -2122,7 +2117,7 @@ namespace {
 				}
 				else
 				{
-					for (piece_index_t i = m_cursor > sequential_start ? m_cursor : sequential_start; i < m_reverse_cursor; ++i)
+					for (piece_index_t i = m_cursor; i < m_reverse_cursor; ++i)
 					{
 						if (!is_piece_free(i, pieces)) continue;
 						// we've already added high priority pieces

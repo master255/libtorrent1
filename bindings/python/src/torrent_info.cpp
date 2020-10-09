@@ -2,6 +2,8 @@
 // subject to the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
+// vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
+
 #include "boost_python.hpp"
 #include <memory>
 
@@ -173,49 +175,79 @@ namespace
     bool get_symlink_attribute(file_entry const& fe) { return fe.symlink_attribute; }
 #endif
 
+load_torrent_limits dict_to_limits(dict limits)
+{
+    load_torrent_limits ret;
+
+    list items = limits.items();
+    int const len = int(boost::python::len(limits));
+    for (int i = 0; i < len; i++)
+    {
+        boost::python::api::object_item item = items[i];
+        std::string const key = extract<std::string>(item[0]);
+        object const value = item[1];
+
+        if (key == "max_buffer_size")
+        {
+            ret.max_buffer_size = extract<int>(value);
+            continue;
+        }
+        else if (key == "max_pieces")
+        {
+            ret.max_pieces = extract<int>(value);
+            continue;
+        }
+        else if (key == "max_decode_depth")
+        {
+            ret.max_decode_depth = extract<int>(value);
+            continue;
+        }
+        else if (key == "max_decode_tokens")
+        {
+            ret.max_decode_tokens = extract<int>(value);
+            continue;
+        }
+    }
+    return ret;
+}
+
 } // namespace unnamed
 
 std::shared_ptr<torrent_info> buffer_constructor0(bytes b)
 {
-   error_code ec;
+   return std::make_shared<torrent_info>(b.arr, from_span);
+}
+
+std::shared_ptr<torrent_info> buffer_constructor1(bytes b, dict limits)
+{
    std::shared_ptr<torrent_info> ret = std::make_shared<torrent_info>(b.arr
-        , ec, from_span);
-#ifndef BOOST_NO_EXCEPTIONS
-   if (ec) throw system_error(ec);
-#endif
+        , dict_to_limits(limits), from_span);
    return ret;
 }
 
 std::shared_ptr<torrent_info> file_constructor0(std::string const& filename)
 {
-   error_code ec;
-   std::shared_ptr<torrent_info> ret = std::make_shared<torrent_info>(filename
-        , ec);
-#ifndef BOOST_NO_EXCEPTIONS
-   if (ec) throw system_error(ec);
-#endif
-   return ret;
+   return std::make_shared<torrent_info>(filename);
+}
+
+std::shared_ptr<torrent_info> file_constructor1(std::string const& filename, dict limits)
+{
+   return std::make_shared<torrent_info>(filename, dict_to_limits(limits));
 }
 
 std::shared_ptr<torrent_info> bencoded_constructor0(entry const& ent)
 {
     std::vector<char> buf;
     bencode(std::back_inserter(buf), ent);
+    return std::make_shared<torrent_info>(buf, lt::from_span);
+}
 
-    bdecode_node e;
-    error_code ec;
-    if (buf.size() == 0 || bdecode(&buf[0], &buf[0] + buf.size(), e, ec) != 0)
-    {
-#ifndef BOOST_NO_EXCEPTIONS
-        throw system_error(ec);
-#endif
-    }
-
-    std::shared_ptr<torrent_info> ret = std::make_shared<torrent_info>(e, ec);
-#ifndef BOOST_NO_EXCEPTIONS
-    if (ec) throw system_error(ec);
-#endif
-    return ret;
+std::shared_ptr<torrent_info> bencoded_constructor1(entry const& ent, dict limits)
+{
+    std::vector<char> buf;
+    bencode(std::back_inserter(buf), ent);
+    return std::make_shared<torrent_info>(buf, dict_to_limits(limits)
+        , lt::from_span);
 }
 
 using by_value = return_value_policy<return_by_value>;
@@ -225,7 +257,9 @@ void bind_torrent_info()
 
     void (torrent_info::*rename_file0)(file_index_t, std::string const&) = &torrent_info::rename_file;
 #if TORRENT_ABI_VERSION == 1
+#ifdef TORRENT_WINDOWS
     void (torrent_info::*rename_file1)(file_index_t, std::wstring const&) = &torrent_info::rename_file;
+#endif
 #endif
 
     class_<file_slice>("file_slice")
@@ -246,12 +280,17 @@ void bind_torrent_info()
     class_<torrent_info, std::shared_ptr<torrent_info>>("torrent_info", no_init)
         .def(init<sha1_hash const&>(arg("info_hash")))
         .def("__init__", make_constructor(&bencoded_constructor0))
+        .def("__init__", make_constructor(&bencoded_constructor1))
         .def("__init__", make_constructor(&buffer_constructor0))
+        .def("__init__", make_constructor(&buffer_constructor1))
         .def("__init__", make_constructor(&file_constructor0))
+        .def("__init__", make_constructor(&file_constructor1))
         .def(init<torrent_info const&>((arg("ti"))))
 
 #if TORRENT_ABI_VERSION == 1
+#ifdef TORRENT_WINDOWS
         .def(init<std::wstring>((arg("file"))))
+#endif
 #endif
 
         .def("add_tracker", (add_tracker1)&torrent_info::add_tracker, arg("url"), arg("tier") = 0, arg("source") = announce_entry::source_client)
@@ -283,7 +322,9 @@ void bind_torrent_info()
 #if TORRENT_ABI_VERSION == 1
         .def("file_at", &torrent_info::file_at)
         .def("file_at_offset", &torrent_info::file_at_offset)
+#ifdef TORRENT_WINDOWS
         .def("rename_file", rename_file1)
+#endif
 #endif // TORRENT_ABI_VERSION
 
         .def("is_valid", &torrent_info::is_valid)
