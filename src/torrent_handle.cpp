@@ -729,7 +729,7 @@ namespace libtorrent {
 	{
 		add_torrent_params params;
 		auto retr = std::ref(params);
-		sync_call(&torrent::write_resume_data, retr);
+		sync_call(&torrent::write_resume_data, resume_data_flags_t{}, retr);
 		return libtorrent::write_resume_data(params);
 	}
 
@@ -867,6 +867,9 @@ namespace libtorrent {
 		// for expired weak_ptrs. So, we're left with a hack
 		return std::size_t(*reinterpret_cast<void* const*>(&th.m_torrent));
 	}
+
+	bool torrent_handle::in_session() const
+	{ return !sync_call_ret<bool>(false, &torrent::is_aborted); }
 
 	static_assert(std::is_nothrow_move_constructible<torrent_handle>::value
 		, "should be nothrow move constructible");

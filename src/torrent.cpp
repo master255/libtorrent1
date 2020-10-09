@@ -210,7 +210,6 @@ bool is_downloading_state(int const st)
 		, m_enable_dht(!bool(p.flags & torrent_flags::disable_dht))
 		, m_enable_lsd(!bool(p.flags & torrent_flags::disable_lsd))
 		, m_max_uploads((1 << 24) - 1)
-		, m_save_resume_flags()
 		, m_num_uploads(0)
 		, m_enable_pex(!bool(p.flags & torrent_flags::disable_pex))
 		, m_magnet_link(false)
@@ -1418,8 +1417,21 @@ bool is_downloading_state(int const st)
 		for (int i = 0; i < blocks_in_piece; ++i, p.start += block_size())
 		{
 			piece_block const block(piece, i);
-			if (!(flags & torrent_handle::overwrite_existing)
-				&& picker().is_finished(block))
+
+			bool const finished = picker().is_finished(block);
+
+			// if this block is already finished, only resume if we have the
+			// flag set to overwrite existing data.
+			if (!(flags & torrent_handle::overwrite_existing) && finished)
+				continue;
+
+			bool const downloaded = picker().is_downloaded(block);
+
+			// however, if the block is downloaded by not written to disk yet,
+			// we can't (easily) replace it. We would have to synchronize with
+			// the disk in a clear_piece() call. Instead, just ignore such
+			// blocks.
+			if (downloaded && !finished)
 				continue;
 
 			p.length = std::min(piece_size - p.start, block_size());
@@ -2032,14 +2044,22 @@ bool is_downloading_state(int const st)
 		TORRENT_ASSERT(m_outstanding_check_files == false);
 		m_outstanding_check_files = true;
 #endif
-		m_ses.disk_thread().async_check_files(
-			m_storage, m_add_torrent_params ? m_add_torrent_params.get() : nullptr
-			, links, std::bind(&torrent::on_resume_data_checked
-			, shared_from_this(), _1, _2));
-		// async_check_files will gut links
+
+		if (!m_add_torrent_params || !(m_add_torrent_params->flags & torrent_flags::no_verify_files))
+		{
+			m_ses.disk_thread().async_check_files(
+				m_storage, m_add_torrent_params ? m_add_torrent_params.get() : nullptr
+				, links, std::bind(&torrent::on_resume_data_checked
+					, shared_from_this(), _1, _2));
+			// async_check_files will gut links
 #ifndef TORRENT_DISABLE_LOGGING
-		debug_log("init, async_check_files");
+			debug_log("init, async_check_files");
 #endif
+		}
+		else
+		{
+			on_resume_data_checked(status_t::no_error, storage_error{});
+		}
 
 		update_want_peers();
 		update_want_tick();
@@ -4788,9 +4808,14 @@ bool is_downloading_state(int const st)
 				--i;
 			}
 			// just in case this piece had priority 0
-			download_priority_t prev_prio = m_picker->piece_priority(piece);
-			m_picker->set_piece_priority(piece, top_priority);
-			if (prev_prio == dont_download) update_gauge();
+			download_priority_t const prev_prio = m_picker->piece_priority(piece);
+			bool const was_finished = is_finished();
+			bool const filter_updated = m_picker->set_piece_priority(piece, top_priority);
+			if (prev_prio == dont_download)
+			{
+				update_gauge();
+				if (filter_updated) update_peer_interest(was_finished);
+			}
 			return;
 		}
 
@@ -4808,9 +4833,14 @@ bool is_downloading_state(int const st)
 		m_time_critical_pieces.insert(critical_piece_it, p);
 
 		// just in case this piece had priority 0
-		download_priority_t prev_prio = m_picker->piece_priority(piece);
-		m_picker->set_piece_priority(piece, top_priority);
-		if (prev_prio == dont_download) update_gauge();
+		download_priority_t const prev_prio = m_picker->piece_priority(piece);
+		bool const was_finished = is_finished();
+		bool const filter_updated = m_picker->set_piece_priority(piece, top_priority);
+		if (prev_prio == dont_download)
+		{
+			update_gauge();
+			if (filter_updated) update_peer_interest(was_finished);
+		}
 
 		piece_picker::downloading_piece pi;
 		m_picker->piece_info(piece, pi);
@@ -6305,7 +6335,7 @@ bool is_downloading_state(int const st)
 				aep.enabled = true;
 	}
 
-	void torrent::write_resume_data(add_torrent_params& ret) const
+	void torrent::write_resume_data(resume_data_flags_t const flags, add_torrent_params& ret) const
 	{
 		ret.version = LIBTORRENT_VERSION_NUM;
 		ret.storage_mode = storage_mode();
@@ -6324,12 +6354,14 @@ bool is_downloading_state(int const st)
 		ret.num_incomplete = m_incomplete;
 		ret.num_downloaded = m_downloaded;
 
-		ret.flags = flags();
+		ret.flags = this->flags();
 
 		ret.added_time = m_added_time;
 		ret.completed_time = m_completed_time;
 
 		ret.save_path = m_save_path;
+
+		if (m_name) ret.name = *m_name;
 
 #if TORRENT_ABI_VERSION == 1
 		// deprecated in 1.2
@@ -6341,7 +6373,7 @@ bool is_downloading_state(int const st)
 
 		if (valid_metadata())
 		{
-			if (m_magnet_link || (m_save_resume_flags & torrent_handle::save_info_dict))
+			if (m_magnet_link || (flags & torrent_handle::save_info_dict))
 			{
 				ret.ti = m_torrent_file;
 			}
@@ -6367,7 +6399,8 @@ bool is_downloading_state(int const st)
 			// info for each unfinished piece
 			for (auto const& dp : q)
 			{
-				if (dp.finished == 0) continue;
+				if (dp.finished == 0 && dp.writing == 0)
+					continue;
 
 				bitfield bitmask;
 				bitmask.resize(num_blocks_per_piece, false);
@@ -6375,7 +6408,8 @@ bool is_downloading_state(int const st)
 				auto const info = m_picker->blocks_for_piece(dp);
 				for (int i = 0; i < int(info.size()); ++i)
 				{
-					if (info[i].state == piece_picker::block_info::state_finished)
+					if (info[i].state == piece_picker::block_info::state_finished
+						|| info[i].state == piece_picker::block_info::state_writing)
 						bitmask.set_bit(i);
 				}
 				ret.unfinished_pieces.emplace(dp.index, std::move(bitmask));
@@ -6436,7 +6470,8 @@ bool is_downloading_state(int const st)
 		}
 
 		// write renamed files
-		if (&m_torrent_file->files() != &m_torrent_file->orig_files()
+		if (valid_metadata()
+			&& &m_torrent_file->files() != &m_torrent_file->orig_files()
 			&& m_torrent_file->files().num_files() == m_torrent_file->orig_files().num_files())
 		{
 			file_storage const& fs = m_torrent_file->files();
@@ -6518,7 +6553,7 @@ bool is_downloading_state(int const st)
 			ret.file_priorities = m_file_priority;
 		}
 
-		if (has_picker())
+		if (valid_metadata() && has_picker())
 		{
 			// write piece priorities
 			// but only if they are not set to the default
@@ -8545,10 +8580,10 @@ bool is_downloading_state(int const st)
 		TORRENT_ASSERT(is_single_thread());
 		INVARIANT_CHECK;
 
-		if (!valid_metadata())
+		if (m_abort)
 		{
 			alerts().emplace_alert<save_resume_data_failed_alert>(get_handle()
-				, errors::no_metadata);
+				, errors::torrent_removed);
 			return;
 		}
 
@@ -8560,7 +8595,6 @@ bool is_downloading_state(int const st)
 		}
 
 		m_need_save_resume_data = false;
-		m_save_resume_flags = flags;
 		state_updated();
 
 		if ((flags & torrent_handle::flush_disk_cache) && m_storage)
@@ -8569,7 +8603,7 @@ bool is_downloading_state(int const st)
 		state_updated();
 
 		add_torrent_params atp;
-		write_resume_data(atp);
+		write_resume_data(flags, atp);
 		alerts().emplace_alert<save_resume_data_alert>(std::move(atp), get_handle());
 	}
 
@@ -11132,7 +11166,8 @@ bool is_downloading_state(int const st)
 #endif
 					// don't try to announce from this endpoint again
 					if (ec == boost::system::errc::address_family_not_supported
-						|| ec == boost::system::errc::host_unreachable)
+						|| ec == boost::system::errc::host_unreachable
+						|| ec == lt::errors::announce_skipped)
 					{
 						aep->enabled = false;
 #ifndef TORRENT_DISABLE_LOGGING

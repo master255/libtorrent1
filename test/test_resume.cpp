@@ -42,6 +42,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/write_resume_data.hpp"
 #include "libtorrent/aux_/path.hpp"
 #include "libtorrent/file.hpp"
+#include "libtorrent/alert_types.hpp"
 #include "setup_transfer.hpp"
 
 #include "test.hpp"
@@ -137,7 +138,7 @@ torrent_handle test_resume_flags(lt::session& ses
 	, bool const test_deprecated = false)
 {
 	std::shared_ptr<torrent_info> ti = generate_torrent(
-		bool(flags & torrent_flags::seed_mode));
+		bool((flags & torrent_flags::seed_mode) && !(flags & torrent_flags::no_verify_files)));
 
 	add_torrent_params p;
 	std::vector<char> rd = generate_resume_data(ti.get(), resume_file_prio);
@@ -1508,6 +1509,23 @@ TORRENT_TEST(seed_mode)
 	TEST_EQUAL(s.uploads_limit, 1346);
 }
 
+TORRENT_TEST(seed_mode_no_verify_files)
+{
+	lt::session ses(settings());
+	torrent_status s = test_resume_flags(ses
+		, torrent_flags::seed_mode | torrent_flags::no_verify_files).status();
+	default_tests(s);
+#ifdef TORRENT_WINDOWS
+	TEST_EQUAL(s.save_path, "c:\\add_torrent_params save_path");
+#else
+	TEST_EQUAL(s.save_path, "/add_torrent_params save_path");
+#endif
+	// note taht torrent_flags::no_verify_files is NOT set here
+	TEST_EQUAL(s.flags & flags_mask, torrent_flags::seed_mode);
+	TEST_EQUAL(s.connections_limit, 1345);
+	TEST_EQUAL(s.uploads_limit, 1346);
+}
+
 TORRENT_TEST(upload_mode)
 {
 	lt::session ses(settings());
@@ -1575,4 +1593,166 @@ TORRENT_TEST(paused)
 	// TODO: test all other resume flags here too. This would require returning
 	// more than just the torrent_status from test_resume_flags. Also http seeds
 	// and trackers for instance
+}
+
+TORRENT_TEST(no_metadata)
+{
+	lt::session ses(settings());
+
+	add_torrent_params p;
+	p.info_hash = sha1_hash("abababababababababab");
+	p.save_path = ".";
+	p.name = "foobar";
+	torrent_handle h = ses.add_torrent(p);
+	h.save_resume_data(torrent_handle::save_info_dict);
+	alert const* a = wait_for_alert(ses, save_resume_data_alert::alert_type);
+	TEST_CHECK(a);
+	save_resume_data_alert const* ra = alert_cast<save_resume_data_alert>(a);
+	TEST_CHECK(ra);
+	if (ra)
+	{
+		auto const& atp = ra->params;
+		TEST_EQUAL(atp.info_hash, p.info_hash);
+		TEST_EQUAL(atp.name, "foobar");
+	}
+}
+
+template <typename Fun>
+void test_unfinished_pieces(Fun f)
+{
+	// create a torrent and complete files
+	std::shared_ptr<torrent_info> ti = generate_torrent(true, true);
+
+	add_torrent_params p;
+	p.info_hash = ti->info_hash();
+	p.have_pieces.resize(ti->num_pieces(), true);
+	p.ti = ti;
+	p.save_path = ".";
+
+	f(*ti, p);
+
+	lt::session ses(settings());
+	torrent_handle h = ses.add_torrent(p);
+	torrent_status s = h.status();
+	TEST_EQUAL(s.info_hash, ti->info_hash());
+
+	if (s.state == torrent_status::seeding) return;
+
+	print_alerts(ses, "ses");
+
+	for (int i = 0; i < 30; ++i)
+	{
+		std::this_thread::sleep_for(lt::milliseconds(100));
+		s = h.status();
+		print_alerts(ses, "ses");
+		if (s.state == torrent_status::seeding) return;
+	}
+
+	TEST_EQUAL(s.state, torrent_status::seeding);
+}
+
+TORRENT_TEST(unfinished_pieces_purse_seed)
+{
+	test_unfinished_pieces([](torrent_info const&, add_torrent_params&){});
+}
+
+TORRENT_TEST(unfinished_pieces_check_all)
+{
+	test_unfinished_pieces([](torrent_info const&, add_torrent_params& atp)
+	{
+		atp.have_pieces.clear();
+	});
+}
+
+TORRENT_TEST(unfinished_pieces_finished)
+{
+	// make sure that a piece that isn't maked as "have", but whose blocks are
+	// all downloaded gets checked and turn into "have".
+	test_unfinished_pieces([](torrent_info const& ti, add_torrent_params& atp)
+	{
+		atp.have_pieces.clear_bit(piece_index_t{0});
+		atp.unfinished_pieces[lt::piece_index_t{0}].resize(ti.piece_length() / 0x4000, true);
+	});
+}
+
+TORRENT_TEST(unfinished_pieces_all_finished)
+{
+	// make sure that a piece that isn't maked as "have", but whose blocks are
+	// all downloaded gets checked and turn into "have".
+	test_unfinished_pieces([](torrent_info const& ti, add_torrent_params& atp)
+	{
+		// we have none of the pieces
+		atp.have_pieces.clear_all();
+		int const blocks_per_piece = ti.piece_length() / 0x4000;
+
+		// but all pieces are downloaded
+		for (piece_index_t p : ti.piece_range())
+			atp.unfinished_pieces[p].resize(blocks_per_piece, true);
+	});
+}
+
+TORRENT_TEST(resume_data_have_pieces)
+{
+	file_storage fs;
+	fs.add_file("tmp1", 128 * 1024 * 8);
+	lt::create_torrent t(fs, 128 * 1024, 6);
+
+	TEST_CHECK(t.num_pieces() > 0);
+
+	std::vector<char> piece_data(std::size_t(fs.piece_length()), 0);
+	aux::random_bytes(piece_data);
+
+	sha1_hash const ph = lt::hasher(piece_data).final();
+	for (auto const i : fs.piece_range())
+		t.set_hash(i, ph);
+
+	std::vector<char> buf;
+	bencode(std::back_inserter(buf), t.generate());
+	auto ti = std::make_shared<torrent_info>(buf, from_span);
+
+	lt::session ses(settings());
+	lt::add_torrent_params atp;
+	atp.ti = ti;
+	atp.flags &= ~torrent_flags::paused;
+	atp.save_path = ".";
+	auto h = ses.add_torrent(atp);
+	wait_for_downloading(ses, "");
+	h.add_piece(piece_index_t{0}, piece_data.data());
+	lt::torrent_status s = h.status(torrent_handle::query_pieces);
+
+	ses.pause();
+	h.save_resume_data();
+
+	auto const* rs = static_cast<save_resume_data_alert const*>(
+		wait_for_alert(ses, save_resume_data_alert::alert_type));
+	TEST_CHECK(rs != nullptr);
+	TEST_EQUAL(rs->params.unfinished_pieces.size(), 1);
+}
+
+// See https://github.com/arvidn/libtorrent/issues/5174
+TORRENT_TEST(removed)
+{
+	lt::session ses(settings());
+	std::shared_ptr<torrent_info> ti = generate_torrent();
+	add_torrent_params p;
+	p.ti = ti;
+	p.save_path = ".";
+	// we're _likely_ to trigger the condition, but not guaranteed. loop
+	// until we do.
+	bool triggered = false;
+	for (int i = 0; i < 10; i++) {
+		torrent_handle h = ses.add_torrent(p);
+		// this is asynchronous
+		ses.remove_torrent(h);
+		try {
+			h.save_resume_data();
+			triggered = true;
+		} catch (std::exception const&) {
+			std::printf("failed to trigger condition, retrying\n");
+		}
+	}
+	TEST_CHECK(triggered);
+	if (!triggered) return;
+	alert const* a = wait_for_alert(ses, save_resume_data_failed_alert::alert_type);
+	TEST_CHECK(a != nullptr);
 }

@@ -1042,7 +1042,7 @@ namespace libtorrent {
 
 		torrent_handle get_handle();
 
-		void write_resume_data(add_torrent_params& atp) const;
+		void write_resume_data(resume_data_flags_t const flags, add_torrent_params& ret) const;
 
 		void seen_complete() { m_last_seen_complete = ::time(nullptr); }
 		int time_since_complete() const { return int(::time(nullptr) - m_last_seen_complete); }
@@ -1477,7 +1477,7 @@ namespace libtorrent {
 		// used to post a message to defer disconnecting peers
 		std::vector<std::shared_ptr<peer_connection>> m_peers_to_disconnect;
 		aux::deferred_handler m_deferred_disconnect;
-		aux::handler_storage<96> m_deferred_handler_storage;
+		aux::handler_storage<104> m_deferred_handler_storage;
 
 		// these are the peer IDs we've used for our outgoing peer connections for
 		// this torrent. If we get an incoming peer claiming to have one of these,
@@ -1614,9 +1614,7 @@ namespace libtorrent {
 		// the maximum number of uploads for this torrent
 		std::uint32_t m_max_uploads:24;
 
-		// these are the flags sent in on a call to save_resume_data
-		// we need to save them to check them in write_resume_data
-		resume_data_flags_t m_save_resume_flags;
+		// 8 bits free
 
 // ----
 
