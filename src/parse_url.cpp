@@ -34,6 +34,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "libtorrent/parse_url.hpp"
 #include "libtorrent/string_util.hpp"
+#include "libtorrent/string_view.hpp"
 
 namespace libtorrent {
 
@@ -172,6 +173,43 @@ exit:
 		base.assign(url.begin(), pos);
 		path.assign(pos, url.end());
 		return std::make_tuple(std::move(base), std::move(path));
+	}
+
+	TORRENT_EXTRA_EXPORT bool is_idna(string_view hostname)
+	{
+		for (;;)
+		{
+			auto dot = hostname.find('.');
+			string_view const label = (dot == string_view::npos) ? hostname : hostname.substr(0, dot);
+			if (label.size() >= 4
+				&& (label[0] == 'x' || label[0] == 'X')
+				&& (label[1] == 'n' || label[1] == 'N')
+				&& label.substr(2, 2) == "--"_sv)
+				return true;
+			if (dot == string_view::npos) return false;
+			hostname = hostname.substr(dot + 1);
+		}
+	}
+
+	bool has_tracker_query_string(string_view query_string)
+	{
+		static string_view const tracker_args[] = {
+			"info_hash"_sv, "event"_sv, "port"_sv, "left"_sv, "key"_sv,
+			"uploaded"_sv, "downloaded"_sv, "corrupt"_sv, "peer_id"_sv
+		};
+		while (!query_string.empty())
+		{
+			string_view arg;
+			std::tie(arg, query_string) = split_string(query_string, '&');
+
+			auto const name = split_string(arg, '=').first;
+			for (auto const& tracker_arg : tracker_args)
+			{
+				if (string_equal_no_case(name, tracker_arg))
+					return true;
+			}
+		}
+		return false;
 	}
 
 }

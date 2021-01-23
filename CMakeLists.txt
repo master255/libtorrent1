@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.12.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.15.0 FATAL_ERROR) # Configurable policies: <= CMP0094
+
+cmake_policy(SET CMP0091 NEW)
+cmake_policy(SET CMP0092 NEW)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 include(LibtorrentMacros)
@@ -240,6 +243,7 @@ set(libtorrent_aux_include_files
 	numeric_cast
 	openssl
 	path
+	pool
 	portmap
 	proxy_settings
 	range
@@ -463,6 +467,8 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES GNU)
 		-ftemplate-depth=512)
 elseif(MSVC)
 	add_compile_options(
+		# https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
+		/Zc:__cplusplus
 		/W4
 		# C4251: 'identifier' : class 'type' needs to have dll-interface to be
 		#        used by clients of class 'type2'
@@ -481,8 +487,12 @@ elseif(MSVC)
 endif()
 
 if(static_runtime)
-	include(ucm_flags)
-	ucm_set_runtime(STATIC)
+	if (MSVC)
+		set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+	else()
+		include(ucm_flags)
+		ucm_set_runtime(STATIC)
+	endif()
 	set(Boost_USE_MULTITHREADED ON)
 	set(Boost_USE_STATIC_RUNTIME ON)
 	set(OPENSSL_MSVC_STATIC_RT ON)
@@ -585,7 +595,7 @@ if (WIN32)
 	target_link_libraries(torrent-rasterbar
 		PRIVATE
 			wsock32 ws2_32 Iphlpapi
-			debug dbghelp
+			debug dbghelp crypt32
 	)
 
 	add_definitions(-D_WIN32_WINNT=0x0600) # target Windows Vista or later
@@ -619,17 +629,49 @@ if (APPLE)
 	target_link_libraries(torrent-rasterbar PRIVATE "-framework CoreFoundation" "-framework SystemConfiguration")
 endif()
 
+# check if we need to link with libatomic (not needed on MSVC)
+if (NOT Windows)
+	# TODO: migrate to CheckSourceCompiles in CMake >= 3.19
+	include(CheckCXXSourceCompiles)
+
+	set(ATOMICS_TEST_SOURCE [=[
+		#include <atomic>
+		#include <cstdint>
+		std::atomic<int> x{0};
+		int main() {
+			x.fetch_add(1, std::memory_order_relaxed);
+			return 0;
+		}
+	]=])
+	string(REPLACE "std::atomic<int>" "std::atomic<std::int64_t>" ATOMICS64_TEST_SOURCE "${ATOMICS_TEST_SOURCE}")
+
+	check_cxx_source_compiles("${ATOMICS_TEST_SOURCE}" HAVE_CXX_ATOMICS_WITHOUT_LIB)
+	check_cxx_source_compiles("${ATOMICS64_TEST_SOURCE}" HAVE_CXX_ATOMICS64_WITHOUT_LIB)
+	if((NOT HAVE_CXX_ATOMICS_WITHOUT_LIB) OR (NOT HAVE_CXX_ATOMICS64_WITHOUT_LIB))
+		set(CMAKE_REQUIRED_LIBRARIES "atomic")
+		check_cxx_source_compiles("${ATOMICS_TEST_SOURCE}" HAVE_CXX_ATOMICS_WITH_LIB)
+		check_cxx_source_compiles("${ATOMICS64_TEST_SOURCE}" HAVE_CXX_ATOMICS64_WITH_LIB)
+		if ((NOT HAVE_CXX_ATOMICS_WITH_LIB) OR (NOT HAVE_CXX_ATOMICS64_WITH_LIB))
+			message(FATAL_ERROR "No native support for std::atomic, or libatomic not found!")
+		else()
+			message(STATUS "Linking with libatomic for atomics support")
+			unset(CMAKE_REQUIRED_LIBRARIES)
+			target_link_libraries(torrent-rasterbar PUBLIC atomic)
+		endif()
+	endif()
+endif()
+
 feature_option(build_tests "build tests" OFF)
 feature_option(build_examples "build examples" OFF)
 feature_option(build_tools "build tools" OFF)
 feature_option(python-bindings "build python bindings" OFF)
+feature_option(python-egg-info "generate python egg info" OFF)
+feature_option(python-install-system-dir "Install python bindings to the system installation directory rather than the CMake installation prefix" OFF)
 
 # these options require existing target
 feature_option(dht "enable support for Mainline DHT" ON)
-if(NOT build_tests) # tests require deprecated symbols
-	target_optional_compile_definitions(torrent-rasterbar PUBLIC FEATURE NAME deprecated-functions DEFAULT ON
-		DESCRIPTION "enable deprecated functions for backwards compatibility" DISABLED TORRENT_NO_DEPRECATE)
-endif()
+target_optional_compile_definitions(torrent-rasterbar PUBLIC FEATURE NAME deprecated-functions DEFAULT ON
+	DESCRIPTION "enable deprecated functions for backwards compatibility" DISABLED TORRENT_NO_DEPRECATE)
 feature_option(encryption "Enables encryption in libtorrent" ON)
 feature_option(exceptions "build with exception support" ON)
 target_optional_compile_definitions(torrent-rasterbar PUBLIC FEATURE NAME extensions DEFAULT ON
@@ -719,9 +761,12 @@ else()
 endif()
 
 # Boost
-find_public_dependency(Boost REQUIRED COMPONENTS system)
+find_public_dependency(Boost REQUIRED)
 target_include_directories(torrent-rasterbar PUBLIC ${Boost_INCLUDE_DIRS})
-target_link_libraries(torrent-rasterbar PUBLIC ${Boost_SYSTEM_LIBRARY})
+if (Boost_MAJOR_VERSION LESS_EQUAL 1 AND Boost_MINOR_VERSION LESS 69)
+	find_package(Boost REQUIRED COMPONENTS system)
+	target_link_libraries(torrent-rasterbar PUBLIC ${Boost_SYSTEM_LIBRARY})
+endif()
 
 if (exceptions)
 	if (MSVC)
@@ -815,7 +860,7 @@ string(REPLACE ";" "\n" _find_dependency_calls "${_find_dependency_calls}")
 write_basic_package_version_file(
 	"${CMAKE_CURRENT_BINARY_DIR}/LibtorrentRasterbar/LibtorrentRasterbarConfigVersion.cmake"
 	VERSION ${libtorrent_VERSION}
-	COMPATIBILITY SameMinorVersion
+	COMPATIBILITY AnyNewerVersion
 )
 
 export(EXPORT LibtorrentRasterbarTargets

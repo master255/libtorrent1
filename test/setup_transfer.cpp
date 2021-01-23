@@ -66,6 +66,12 @@ using namespace lt;
 #include <conio.h>
 #endif
 
+#if defined TORRENT_WINDOWS
+#define SEPARATOR "\\"
+#else
+#define SEPARATOR "/"
+#endif
+
 std::shared_ptr<torrent_info> generate_torrent(bool const with_files, bool const with_hashes)
 {
 	if (with_files)
@@ -112,11 +118,17 @@ std::shared_ptr<torrent_info> generate_torrent(bool const with_files, bool const
 
 namespace {
 	std::uint32_t g_addr = 0x92343023;
+	address_v6::bytes_type g_addr6
+		= {0x93, 0x30, 0x2e, 0xf4, 0x1c, 0x01, 0x3d, 0x8a
+		, 0x35, 0x3d, 0x69, 0x10, 0x55, 0x82, 0x9d, 0x2f};
 }
 
 void init_rand_address()
 {
 	g_addr = 0x92343023;
+	g_addr6 = address_v6::bytes_type{
+		{0x93, 0x30, 0x2e, 0xf4, 0x1c, 0x01, 0x3d, 0x8a
+		, 0x35, 0x3d, 0x69, 0x10, 0x55, 0x82, 0x9d, 0x2f}};
 }
 
 address rand_v4()
@@ -144,12 +156,34 @@ sha1_hash to_hash(char const* s)
 	return ret;
 }
 
+namespace {
+void add_mp(span<std::uint8_t> target, span<std::uint8_t const> add)
+{
+	TORRENT_ASSERT(target.size() == add.size());
+	int carry = 0;
+	for (int i = int(target.size()) - 1; i >= 0; --i)
+	{
+		int const res = carry + int(target[i]) + add[i];
+		carry = res >> 8;
+		target[i] = res % 255;
+	}
+}
+}
+
 address rand_v6()
 {
-	address_v6::bytes_type bytes;
-	for (int i = 0; i < int(bytes.size()); ++i)
-		bytes[static_cast<std::size_t>(i)] = std::uint8_t(lt::random(0xff));
-	return address_v6(bytes);
+	static address_v6::bytes_type const add{
+		{0x93, 0x30, 0x2e, 0xf4, 0x1c, 0x01, 0x3d, 0x8a
+		, 0x35, 0x3d, 0x69, 0x10, 0x55, 0x82, 0x9d, 0x23}};
+
+	address_v6 ret;
+	do
+	{
+		add_mp(g_addr6, add);
+		ret = address_v6(g_addr6);
+
+	} while (is_any(ret) || is_local(ret) || is_loopback(ret));
+	return ret;
 }
 
 static std::uint16_t g_port = 0;
@@ -239,7 +273,7 @@ alert const* wait_for_alert(lt::session& ses, int type, char const* name
 			auto a = *i;
 			if (should_print(a))
 			{
-				std::printf("%s: %s: [%s] %s\n", time_now_string(), name
+				std::printf("%s: %s: [%s] %s\n", time_now_string().c_str(), name
 					, a->what(), a->message().c_str());
 			}
 			if (a->type() == type)
@@ -327,7 +361,7 @@ bool print_alerts(lt::session& ses, char const* name
 	{
 		if (peer_disconnected_alert const* p = alert_cast<peer_disconnected_alert>(a))
 		{
-			std::printf("%s: %s: [%s] (%s): %s\n", time_now_string(), name, a->what()
+			std::printf("%s: %s: [%s] (%s): %s\n", time_now_string().c_str(), name, a->what()
 				, print_endpoint(p->endpoint).c_str(), p->message().c_str());
 		}
 		else if (a->type() == invalid_request_alert::alert_type)
@@ -342,7 +376,7 @@ bool print_alerts(lt::session& ses, char const* name
 		}
 		else if (should_print(a) && !no_output)
 		{
-			std::printf("%s: %s: [%s] %s\n", time_now_string(), name, a->what(), a->message().c_str());
+			std::printf("%s: %s: [%s] %s\n", time_now_string().c_str(), name, a->what(), a->message().c_str());
 		}
 
 		TEST_CHECK(alert_cast<fastresume_rejected_alert>(a) == nullptr || allow_failed_fastresume);
@@ -388,12 +422,37 @@ void wait_for_downloading(lt::session& ses, char const* name)
 			}, false);
 		if (downloading_done) break;
 		if (total_seconds(clock_type::now() - start) > 10) break;
-		a = ses.wait_for_alert(seconds(2));
+		a = ses.wait_for_alert(seconds(5));
 	} while (a);
 	if (!downloading_done)
 	{
 		std::printf("%s: did not receive a state_changed_alert indicating "
 			"the torrent is downloading. waited: %d ms\n"
+			, name, int(total_milliseconds(clock_type::now() - start)));
+	}
+}
+
+void wait_for_seeding(lt::session& ses, char const* name)
+{
+	time_point start = clock_type::now();
+	bool seeding = false;
+	alert const* a = nullptr;
+	do
+	{
+		seeding = print_alerts(ses, name, true, true
+			, [](lt::alert const* al)
+			{
+				state_changed_alert const* sc = alert_cast<state_changed_alert>(al);
+				return sc && sc->state == torrent_status::seeding;
+			}, false);
+		if (seeding) break;
+		if (total_seconds(clock_type::now() - start) > 10) break;
+		a = ses.wait_for_alert(seconds(5));
+	} while (a);
+	if (!seeding)
+	{
+		std::printf("%s: did not receive a state_changed_alert indicating "
+			"the torrent is seeding. waited: %d ms\n"
 			, name, int(total_milliseconds(clock_type::now() - start)));
 	}
 }
@@ -652,50 +711,44 @@ int start_proxy(int proxy_type)
 		case settings_pack::socks4:
 			type = "socks4";
 			auth = " --allow-v4";
-			cmd = "../socks.py";
+			cmd = ".." SEPARATOR "socks.py";
 			break;
 		case settings_pack::socks5:
 			type = "socks5";
-			cmd = "../socks.py";
+			cmd = ".." SEPARATOR "socks.py";
 			break;
 		case settings_pack::socks5_pw:
 			type = "socks5";
 			auth = " --username testuser --password testpass";
-			cmd = "../socks.py";
+			cmd = ".." SEPARATOR "socks.py";
 			break;
 		case settings_pack::http:
 			type = "http";
-			cmd = "../http_proxy.py";
+			cmd = ".." SEPARATOR "http_proxy.py";
 			break;
 		case settings_pack::http_pw:
 			type = "http";
 			auth = " --basic-auth testuser:testpass";
-			cmd = "../http_proxy.py";
+			cmd = ".." SEPARATOR "http_proxy.py";
 			break;
 	}
 	std::string python_exe = get_python();
 	char buf[1024];
 	std::snprintf(buf, sizeof(buf), "%s %s --port %d%s", python_exe.c_str(), cmd, port, auth);
 
-	std::printf("%s starting proxy on port %d (%s %s)...\n", time_now_string(), port, type, auth);
+	std::printf("%s starting proxy on port %d (%s %s)...\n", time_now_string().c_str(), port, type, auth);
 	std::printf("%s\n", buf);
 	pid_type r = async_run(buf);
 	if (r == 0) abort();
 	proxy_t t = { r, proxy_type };
 	running_proxies.insert(std::make_pair(port, t));
-	std::printf("%s launched\n", time_now_string());
+	std::printf("%s launched\n", time_now_string().c_str());
 	std::this_thread::sleep_for(lt::milliseconds(500));
 	wait_for_port(port);
 	return port;
 }
 
 using namespace lt;
-
-template <class T>
-std::shared_ptr<T> clone_ptr(std::shared_ptr<T> const& ptr)
-{
-	return std::make_shared<T>(*ptr);
-}
 
 std::vector<char> generate_piece(piece_index_t const idx, int const piece_size)
 {
@@ -924,7 +977,7 @@ setup_transfer(lt::session* ses1, lt::session* ses2, lt::session* ses3
 	param.flags &= ~torrent_flags::paused;
 	param.flags &= ~torrent_flags::auto_managed;
 	if (p) param = *p;
-	param.ti = clone_ptr(t);
+	param.ti = t;
 	param.save_path = "tmp1" + suffix;
 	param.flags |= torrent_flags::seed_mode;
 	error_code ec;
@@ -949,7 +1002,7 @@ setup_transfer(lt::session* ses1, lt::session* ses2, lt::session* ses3
 
 	if (ses3)
 	{
-		param.ti = clone_ptr(t);
+		param.ti = t;
 		param.save_path = "tmp3" + suffix;
 		tor3 = ses3->add_torrent(param, ec);
 		TEST_CHECK(!ses3->get_torrents().empty());
@@ -962,11 +1015,11 @@ setup_transfer(lt::session* ses1, lt::session* ses2, lt::session* ses3
 	}
 	else if (torrent2)
 	{
-		param.ti = clone_ptr(*torrent2);
+		param.ti = *torrent2;
 	}
 	else
 	{
-		param.ti = clone_ptr(t);
+		param.ti = t;
 	}
 	param.save_path = "tmp2" + suffix;
 
@@ -986,17 +1039,17 @@ setup_transfer(lt::session* ses1, lt::session* ses2, lt::session* ses3
 		if (use_ssl_ports)
 		{
 			port = ses2->ssl_listen_port();
-			std::printf("%s: ses2->ssl_listen_port(): %d\n", time_now_string(), port);
+			std::printf("%s: ses2->ssl_listen_port(): %d\n", time_now_string().c_str(), port);
 		}
 
 		if (port == 0)
 		{
 			port = ses2->listen_port();
-			std::printf("%s: ses2->listen_port(): %d\n", time_now_string(), port);
+			std::printf("%s: ses2->listen_port(): %d\n", time_now_string().c_str(), port);
 		}
 
 		std::printf("%s: ses1: connecting peer port: %d\n"
-			, time_now_string(), port);
+			, time_now_string().c_str(), port);
 		tor1.connect_peer(tcp::endpoint(address::from_string("127.0.0.1", ec)
 			, std::uint16_t(port)));
 
@@ -1054,16 +1107,16 @@ int start_web_server(bool ssl, bool chunked_encoding, bool keepalive, int min_in
 	std::string python_exe = get_python();
 
 	char buf[200];
-	std::snprintf(buf, sizeof(buf), "%s ../web_server.py %d %d %d %d %d"
+	std::snprintf(buf, sizeof(buf), "%s .." SEPARATOR "web_server.py %d %d %d %d %d"
 		, python_exe.c_str(), port, chunked_encoding, ssl, keepalive, min_interval);
 
-	std::printf("%s starting web_server on port %d...\n", time_now_string(), port);
+	std::printf("%s starting web_server on port %d...\n", time_now_string().c_str(), port);
 
 	std::printf("%s\n", buf);
 	pid_type r = async_run(buf);
 	if (r == 0) abort();
 	web_server_pid = r;
-	std::printf("%s launched\n", time_now_string());
+	std::printf("%s launched\n", time_now_string().c_str());
 	std::this_thread::sleep_for(lt::milliseconds(1000));
 	wait_for_port(port);
 	return port;

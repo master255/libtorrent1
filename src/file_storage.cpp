@@ -88,6 +88,7 @@ namespace libtorrent {
 	file_storage::file_storage(file_storage const&) = default;
 	file_storage& file_storage::operator=(file_storage const&) = default;
 	file_storage::file_storage(file_storage&&) noexcept = default;
+	file_storage& file_storage::operator=(file_storage&&) = default;
 
 	void file_storage::reserve(int num_files)
 	{
@@ -667,19 +668,36 @@ namespace {
 	{
 		TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
 		internal_file_entry const& fe = m_files[index];
-		TORRENT_ASSERT(fe.symlink_index < int(m_symlinks.size()));
-
-		auto const& link = m_symlinks[fe.symlink_index];
-
 		// TODO: 3 this is a hack to retain ABI compatibility with 1.2.1
 		// in next major release, make this return by value
 		static std::string storage[4];
 		static std::atomic<size_t> counter{0};
+
+		if (fe.symlink_index == internal_file_entry::not_a_symlink)
+		{
+			std::string& ret = storage[(counter++) % 4];
+			ret.clear();
+			return ret;
+		}
+
+		TORRENT_ASSERT(fe.symlink_index < int(m_symlinks.size()));
+
+		auto const& link = m_symlinks[fe.symlink_index];
+
 		std::string& ret = storage[(counter++) % 4];
 		ret.reserve(m_name.size() + link.size() + 1);
 		ret.assign(m_name);
 		append_path(ret, link);
 		return ret;
+	}
+
+	std::string const& file_storage::internal_symlink(file_index_t const index) const
+	{
+		TORRENT_ASSERT_PRECOND(index >= file_index_t{} && index < end_file());
+		internal_file_entry const& fe = m_files[index];
+		TORRENT_ASSERT(fe.symlink_index < int(m_symlinks.size()));
+
+		return m_symlinks[fe.symlink_index];
 	}
 
 	std::time_t file_storage::mtime(file_index_t const index) const

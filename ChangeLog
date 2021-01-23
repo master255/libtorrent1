@@ -1,3 +1,32 @@
+	* fix integer overflow when setting a high DHT upload rate limit
+	* improve Path MTU discovery logic in uTP
+	* fix overflow issue when rlimit_nofile is set to infinity
+	* fix issue in python binding interpreting int settings > INT_MAX
+	* Fix cxxflags and linkflags injection via environment variables
+
+1.2.12 released
+
+	* fix loading of DHT node ID from previous session on startup
+	* use getrandom(), when available, and fall back to /dev/urandom
+	* fix python binding for "value" in dht put alerts
+	* fix bug in python binding for dht_put_mutable_item
+	* fix uTP issue acking FIN packets
+	* validate HTTPS certificates by default (trackers and web seeds)
+	* load SSL certificates from windows system certificate store, to authenticate trackers
+	* introduce mitigation for Server Side Request Forgery in tracker and web seed URLs
+	* fix error handling for pool allocation failure
+
+1.2.11 released
+
+	* fix issue with moving the session object
+	* deprecate torrent_status::allocating. This state is no longer used
+	* fix bug creating torrents with symbolic links
+	* remove special case to save metadata in resume data unconditionally when added throught magnet link
+	* fix bugs in mutable-torrent support (reusing identical files from different torrents)
+	* fix incorrectly inlined move-assignment of file_storage
+	* add session::paused flag, and the ability to construct a session in paused mode
+	* fix session-pause causing tracker announces to fail
+	* fix peer-exchange flags bug
 	* allow saving resume data before metadata has been downloaded (for magnet links)
 	* record blocks in the disk queue as downloaded in the resume data
 	* fix bug in set_piece_deadline() when set in a zero-priority piece

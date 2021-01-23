@@ -128,6 +128,8 @@ namespace
 
 			TORRENT_TRY
 			{
+				// if the dictionary doesn't contain "key", it will throw, hence
+				// the try-catch here
 				object const value = sett_dict[key];
 				switch (sett & settings_pack::type_mask)
 				{
@@ -135,8 +137,15 @@ namespace
 						p.set_str(sett, extract<std::string>(value));
 						break;
 					case settings_pack::int_type_base:
-						p.set_int(sett, extract<int>(value));
+					{
+						std::int64_t const val = extract<std::int64_t>(value);
+						// deliberately truncate and sign-convert here. If we
+						// extract an int directly, unsigned ints may throw
+						// an exception otherwise, if it doesn't fit. Notably for a
+						// flag-type with all bits set.
+						p.set_int(sett, static_cast<int>(val));
 						break;
+					}
 					case settings_pack::bool_type_base:
 						p.set_bool(sett, extract<bool>(value));
 						break;
@@ -702,9 +711,12 @@ namespace
         TORRENT_ASSERT(public_key.size() == 32);
         std::array<char, 32> key;
         std::copy(public_key.begin(), public_key.end(), key.begin());
-        ses.dht_put_item(key, [&](entry& e, std::array<char, 64>& sig, std::int64_t& seq
-            , std::string const& salt) { put_string(e, sig, seq, salt
-                , public_key, private_key, data); }
+        ses.dht_put_item(key
+            , [pk=std::move(public_key), sk=std::move(private_key), d=std::move(data)]
+            (entry& e, std::array<char, 64>& sig, std::int64_t& seq, std::string const& salt)
+            {
+                put_string(e, sig, seq, salt, pk, sk, d);
+            }
             , salt);
     }
 #endif
@@ -888,6 +900,7 @@ void bind_session()
     {
         scope s = class_<dummy10>("session_flags_t");
         s.attr("add_default_plugins") = lt::session::add_default_plugins;
+        s.attr("paused") = lt::session::paused;
 #if TORRENT_ABI_VERSION == 1
         s.attr("start_default_features") = lt::session::start_default_features;
 #endif

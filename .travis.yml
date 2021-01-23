@@ -74,7 +74,8 @@ before_install:
       sysctl hw.ncpu;
     fi'
   - 'if [[ $TRAVIS_OS_NAME == "osx" ]]; then
-      travis_retry brew install ccache boost-build boost-python3;
+      travis_retry brew install ccache boost-build boost-python3 "python@3.9" ;
+      export PYTHON_INCLUDE=`echo /usr/local/Cellar/python@3.9/*/Frameworks/Python.framework/Versions/3.9/include/python3.9` ;
     fi'
   # we have to use python from brew rather than the system provided python
   # because of OSX System Integrity Protection, which prevents injecting
@@ -134,8 +135,9 @@ install:
        <linkflags>-mios-version-min=7
        <linkflags>\"-arch armv7\"
        <linkflags>-fobjc-abi-version=2 ;" >>~/user-config.jam'
-  - 'echo "using python : : $(which python3) : /usr/local/Frameworks/Python.framework/Headers : : <target-os>darwin ;" >> ~/user-config.jam'
+  - 'echo "using python : 3.9 : /usr/local/opt/python@3.9/bin/python3 : $(PYTHON_INCLUDE) : /usr/local/opt/python@3.9/Frameworks/Python.framework/Versions/3.9/lib/python3.9/config-3.9-darwin : <target-os>darwin ;" >> ~/user-config.jam'
   - 'echo "using python : : $(which python3) : : : <target-os>linux ;" >> ~/user-config.jam'
+
   - if [ "$docs" == "1" ]; then rst2html.py --version; fi
   - 'if [ "$pylint" == "1" ]; then
       sudo pip3 install flake8;
@@ -153,7 +155,16 @@ install:
   - ccache --show-stats
   - ccache --zero-stats
 
+  # CMake from Kitware is installed in /usr/bin. TravisCI installs its own cmake to another location
+  # which overrides other installations if they don't call the new binary directly
+  # Install and prepend a symlink to the latest version to PATH so that it gets used instead.
   - if [[ "$cmake" == "1" ]]; then
+      wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null;
+      sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ focal main';
+      sudo apt install cmake;
+      sudo mkdir -p /usr/local/cmake-latest/bin;
+      sudo ln -s /usr/bin/cmake /usr/local/cmake-latest/bin/cmake;
+      PATH=/usr/local/cmake-latest/bin:$PATH;
       which cmake;
       cmake --version;
     fi
@@ -200,7 +211,7 @@ script:
   - 'if [ "$tests" == "1" ]; then
       ${B2} -j2 warnings-as-errors=on warnings=all ${B2_ARGS} testing.execute=off &&
       travis_retry ${B2} -j3 warnings-as-errors=on warnings=all ${B2_ARGS} -l300 &&
-      travis_retry ${B2} -j2 warnings-as-errors=on warnings=all ${B2_ARGS} test_natpmp enum_if -l300 &&
+      travis_retry ${B2} -j2 warnings-as-errors=on warnings=all ${B2_ARGS} test_upnp test_natpmp enum_if -l300 &&
       if [[ $TRAVIS_OS_NAME != "osx" ]]; then
         travis_retry ${B2} -j2 warnings-as-errors=on warnings=all ${B2_ARGS} test_lsd -l300;
       fi &&

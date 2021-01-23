@@ -1026,7 +1026,7 @@ namespace libtorrent {
 			&& has_piece(index))
 		{
 #ifndef TORRENT_DISABLE_LOGGING
-			peer_log(peer_log_alert::outgoing_message, "HAVE", "piece: %d SUPRESSED"
+			peer_log(peer_log_alert::outgoing_message, "HAVE", "piece: %d SUPPRESSED"
 				, static_cast<int>(index));
 #endif
 			return;
@@ -2343,7 +2343,7 @@ namespace libtorrent {
 #ifndef TORRENT_DISABLE_LOGGING
 			if (should_log(peer_log_alert::info))
 			{
-				peer_log(peer_log_alert::info, "INVALID_REQUEST", "piece not superseeded "
+				peer_log(peer_log_alert::info, "INVALID_REQUEST", "piece not super-seeded "
 					"i: %d t: %d n: %d h: %d ss1: %d ss2: %d"
 					, m_peer_interested
 					, valid_piece_index
@@ -2595,7 +2595,7 @@ namespace libtorrent {
 	{
 		TORRENT_ASSERT(is_single_thread());
 		m_last_piece = aux::time_now();
-		TORRENT_ASSERT(m_outstanding_bytes >= bytes);
+		TORRENT_ASSERT_VAL(m_outstanding_bytes >= bytes, m_outstanding_bytes - bytes);
 		m_outstanding_bytes -= bytes;
 		if (m_outstanding_bytes < 0) m_outstanding_bytes = 0;
 		std::shared_ptr<torrent> t = associated_torrent().lock();
@@ -3950,8 +3950,7 @@ namespace libtorrent {
 		// we can't download pieces in these states
 		if (t->state() == torrent_status::checking_files
 			|| t->state() == torrent_status::checking_resume_data
-			|| t->state() == torrent_status::downloading_metadata
-			|| t->state() == torrent_status::allocating)
+			|| t->state() == torrent_status::downloading_metadata)
 			return;
 
 		if (int(m_download_queue.size()) >= m_desired_queue_size

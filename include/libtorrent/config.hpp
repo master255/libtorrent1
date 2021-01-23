@@ -136,10 +136,17 @@ POSSIBILITY OF SUCH DAMAGE.
 #if TARGET_OS_IPHONE
 #define TORRENT_USE_SC_NETWORK_REACHABILITY 1
 #endif
+
+#define TORRENT_USE_DEV_RANDOM 1
+
+#else
+
+// non-Apple BSD
+#define TORRENT_USE_GETRANDOM 1
+
 #endif // __APPLE__
 
 #define TORRENT_HAS_SYMLINK 1
-#define TORRENT_USE_DEV_RANDOM 1
 #define TORRENT_HAVE_MMAP 1
 
 #define TORRENT_HAS_FALLOCATE 0
@@ -168,6 +175,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_USE_IFCONF 1
 #define TORRENT_HAS_SALEN 0
 #define TORRENT_USE_FDATASYNC 1
+
+#if defined __GLIBC__ && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 24))
+#define TORRENT_USE_GETRANDOM 1
+#endif
 
 // ===== ANDROID ===== (almost linux, sort of)
 #if defined __ANDROID__
@@ -215,6 +226,7 @@ POSSIBILITY OF SUCH DAMAGE.
 // unless some other crypto library has been specified, default to the native
 // windows CryptoAPI
 #define TORRENT_USE_CRYPTOAPI 1
+#define TORRENT_USE_DEV_RANDOM 0
 
 #ifdef NTDDI_VERSION
 # if (NTDDI_VERSION > NTDDI_WINXPSP2)
@@ -242,6 +254,7 @@ POSSIBILITY OF SUCH DAMAGE.
 // unless some other crypto library has been specified, default to the native
 // windows CryptoAPI
 #define TORRENT_USE_CRYPTOAPI 1
+#define TORRENT_USE_DEV_RANDOM 0
 
 #ifdef NTDDI_VERSION
 # if (NTDDI_VERSION > NTDDI_WINXPSP2)
@@ -284,6 +297,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_HAS_SALEN 0
 #define TORRENT_HAVE_MMAP 1
 #define TORRENT_HAS_SYMLINK 1
+#define TORRENT_USE_GETRANDOM 1
 
 // ==== BEOS ===
 #elif defined __BEOS__ || defined __HAIKU__
@@ -300,6 +314,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_USE_IFADDRS 1
 #define TORRENT_USE_IFCONF 1
 #define TORRENT_HAS_SYMLINK 1
+#define TORRENT_USE_GETRANDOM 1
 
 // ==== eCS(OS/2) ===
 #elif defined __OS2__
@@ -395,7 +410,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #ifndef TORRENT_USE_DEV_RANDOM
-#define TORRENT_USE_DEV_RANDOM 0
+#define TORRENT_USE_DEV_RANDOM 1
 #endif
 
 #ifndef TORRENT_HAVE_MMAP
@@ -452,6 +467,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_AUTO_RETURN_TYPES 0
 #endif
 
+#ifndef TORRENT_USE_GETRANDOM
+#define TORRENT_USE_GETRANDOM 0
+#endif
+
 #if !defined(TORRENT_READ_HANDLER_MAX_SIZE)
 # if defined _GLIBCXX_DEBUG || !defined NDEBUG
 // internal
@@ -459,7 +478,7 @@ constexpr std::size_t TORRENT_READ_HANDLER_MAX_SIZE = 432;
 # else
 // internal
 // if this is not divisible by 8, we're wasting space
-constexpr std::size_t TORRENT_READ_HANDLER_MAX_SIZE = 342;
+constexpr std::size_t TORRENT_READ_HANDLER_MAX_SIZE = 400;
 # endif
 #endif
 
@@ -470,7 +489,7 @@ constexpr std::size_t TORRENT_WRITE_HANDLER_MAX_SIZE = 432;
 # else
 // internal
 // if this is not divisible by 8, we're wasting space
-constexpr std::size_t TORRENT_WRITE_HANDLER_MAX_SIZE = 342;
+constexpr std::size_t TORRENT_WRITE_HANDLER_MAX_SIZE = 400;
 # endif
 #endif
 

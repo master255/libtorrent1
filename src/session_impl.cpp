@@ -171,6 +171,10 @@ namespace {
 }
 #endif
 
+#ifdef TORRENT_WINDOWS
+#include <wincrypt.h>
+#endif
+
 #endif // TORRENT_USE_OPENSSL
 
 #ifdef TORRENT_WINDOWS
@@ -462,7 +466,8 @@ namespace aux {
 #endif
 #endif
 
-	session_impl::session_impl(io_service& ios, settings_pack const& pack)
+	session_impl::session_impl(io_service& ios, settings_pack const& pack
+		, session_flags_t const flags)
 		: m_settings(pack)
 		, m_io_service(ios)
 #ifdef TORRENT_USE_OPENSSL
@@ -518,6 +523,7 @@ namespace aux {
 		, m_timer(m_io_service)
 		, m_lsd_announce_timer(m_io_service)
 		, m_close_file_timer(m_io_service)
+		, m_paused(flags & session::paused)
 	{
 	}
 
@@ -557,6 +563,33 @@ namespace aux {
 		m_ssl_ctx.set_verify_mode(boost::asio::ssl::context::verify_none, ec);
 		m_ssl_ctx.set_default_verify_paths(ec);
 		m_peer_ssl_ctx.set_verify_mode(boost::asio::ssl::context::verify_none, ec);
+#ifdef TORRENT_WINDOWS
+		// load certificates from the windows system certificate store
+		X509_STORE* store = X509_STORE_new();
+		if (store)
+		{
+			HCERTSTORE system_store = CertOpenSystemStoreA(0, "ROOT");
+			// this is best effort
+			if (system_store)
+			{
+				CERT_CONTEXT const* ctx = nullptr;
+				while ((ctx = CertEnumCertificatesInStore(system_store, ctx)) != nullptr)
+				{
+					unsigned char const* cert_ptr = reinterpret_cast<unsigned char const*>(ctx->pbCertEncoded);
+					X509* x509 = d2i_X509(nullptr, &cert_ptr, ctx->cbCertEncoded);
+					// this is best effort
+					if (!x509) continue;
+					X509_STORE_add_cert(store, x509);
+					X509_free(x509);
+				}
+				CertFreeCertificateContext(ctx);
+				CertCloseStore(system_store, 0);
+			}
+		}
+
+		SSL_CTX* ssl_ctx = m_ssl_ctx.native_handle();
+		SSL_CTX_set_cert_store(ssl_ctx, store);
+#endif
 #if OPENSSL_VERSION_NUMBER >= 0x90812f
 		aux::openssl_set_tlsext_servername_callback(m_peer_ssl_ctx.native_handle()
 			, servername_callback);
@@ -956,7 +989,7 @@ namespace aux {
 #ifndef TORRENT_DISABLE_LOGGING
 		session_log(" aborting all tracker requests");
 #endif
-		m_tracker_manager.abort_all_requests();
+		m_tracker_manager.stop();
 
 #ifndef TORRENT_DISABLE_LOGGING
 		session_log(" aborting all connections (%d)", int(m_connections.size()));
@@ -4242,8 +4275,11 @@ namespace {
 		int const allowed_upload_slots = unchoke_sort(peers, max_upload_rate
 			, unchoke_interval, m_settings);
 
-		m_stats_counters.set_value(counters::num_unchoke_slots
-			, allowed_upload_slots);
+		if (m_settings.get_int(settings_pack::choking_algorithm) != settings_pack::fixed_slots_choker)
+		{
+			m_stats_counters.set_value(counters::num_unchoke_slots
+				, allowed_upload_slots);
+		}
 
 #ifndef TORRENT_DISABLE_LOGGING
 		if (should_log())

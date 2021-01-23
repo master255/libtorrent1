@@ -62,12 +62,6 @@ bool eq(Tp1 const lhs, Tp2 const rhs)
 	return std::abs(lt::duration_cast<seconds>(lhs - rhs).count()) <= 1;
 }
 
-template <class T>
-std::shared_ptr<T> clone_ptr(std::shared_ptr<T> const& ptr)
-{
-	return std::make_shared<T>(*ptr);
-}
-
 void test_interval(int interval)
 {
 	using sim::asio::ip::address_v4;
@@ -306,6 +300,23 @@ struct sim_config : sim::default_config
 			result.push_back(address_v4::from_string("123.0.0.2"));
 			if (ipv6)
 				result.push_back(address_v6::from_string("ff::dead:beef"));
+			return duration_cast<chrono::high_resolution_clock::duration>(chrono::milliseconds(100));
+		}
+		if (hostname == "localhost")
+		{
+			result.push_back(address_v4::from_string("127.0.0.1"));
+			if (ipv6)
+				result.push_back(address_v6::from_string("::1"));
+			return duration_cast<chrono::high_resolution_clock::duration>(chrono::milliseconds(1));
+		}
+		if (hostname == "xn--tracker-.com")
+		{
+			result.push_back(address_v4::from_string("123.0.0.2"));
+			return duration_cast<chrono::high_resolution_clock::duration>(chrono::milliseconds(100));
+		}
+		if (hostname == "redirector.com")
+		{
+			result.push_back(address_v4::from_string("123.0.0.4"));
 			return duration_cast<chrono::high_resolution_clock::duration>(chrono::milliseconds(100));
 		}
 
@@ -604,7 +615,8 @@ TORRENT_TEST(ipv6_support_bind_v6_v4)
 // port 8080.
 template <typename Setup, typename Announce, typename Test1, typename Test2>
 void tracker_test(Setup setup, Announce a, Test1 test1, Test2 test2
-	, char const* url_path = "/announce")
+	, char const* url_path = "/announce"
+	, char const* redirect = "http://123.0.0.2/announce")
 {
 	using sim::asio::ip::address_v4;
 	sim_config network_cfg;
@@ -612,18 +624,29 @@ void tracker_test(Setup setup, Announce a, Test1 test1, Test2 test2
 
 	sim::asio::io_service tracker_ios(sim, address_v4::from_string("123.0.0.2"));
 	sim::asio::io_service tracker_ios6(sim, address_v6::from_string("ff::dead:beef"));
+	sim::asio::io_service redirector_ios(sim, address_v4::from_string("123.0.0.4"));
+
+	sim::asio::io_service tracker_lo_ios(sim, address_v4::from_string("127.0.0.1"));
+	sim::asio::io_service tracker_lo_ios6(sim, address_v6::from_string("::1"));
 
 	// listen on port 8080
 	sim::http_server http(tracker_ios, 8080);
 	sim::http_server http6(tracker_ios6, 8080);
+	sim::http_server http_lo(tracker_lo_ios, 8080);
+	sim::http_server http6_lo(tracker_lo_ios6, 8080);
+	sim::http_server http_redirect(redirector_ios, 8080);
 
 	http.register_handler(url_path, a);
 	http6.register_handler(url_path, a);
+	http_lo.register_handler(url_path, a);
+	http6_lo.register_handler(url_path, a);
+	http_redirect.register_redirect(url_path, redirect);
 
 	lt::session_proxy zombie;
 
 	asio::io_service ios(sim, { address_v4::from_string("123.0.0.3")
 		, address_v6::from_string("ffff::1337") });
+
 	lt::settings_pack sett = settings();
 	std::unique_ptr<lt::session> ses(new lt::session(sett, ios));
 
@@ -1323,6 +1346,111 @@ TORRENT_TEST(tracker_user_agent_privacy_mode_private_torrent)
 		, [](torrent_handle h) {}
 		, [](torrent_handle h) {});
 	TEST_EQUAL(got_announce, true);
+}
+
+bool test_ssrf(char const* announce_path, bool const feature_on
+	, char const* tracker_url)
+{
+	bool got_announce = false;
+	tracker_test(
+		[&](lt::add_torrent_params& p, lt::session& ses)
+		{
+			settings_pack pack;
+			pack.set_bool(settings_pack::ssrf_mitigation, feature_on);
+			ses.apply_settings(pack);
+			p.trackers.emplace_back(tracker_url);
+			return 60;
+		},
+		[&](std::string method, std::string req
+			, std::map<std::string, std::string>& headers)
+		{
+			got_announce = true;
+			return sim::send_response(200, "OK", 11) + "d5:peers0:e";
+		}
+		, [](torrent_handle h) {}
+		, [](torrent_handle h) {}
+		, announce_path);
+	return got_announce;
+}
+
+TORRENT_TEST(ssrf_localhost)
+{
+	TEST_CHECK(test_ssrf("/announce", true, "http://localhost:8080/announce"));
+	TEST_CHECK(!test_ssrf("/unusual-announce-path", true, "http://localhost:8080/unusual-announce-path"));
+	TEST_CHECK(test_ssrf("/unusual-announce-path", false, "http://localhost:8080/unusual-announce-path"));
+
+	TEST_CHECK(!test_ssrf("/short", true, "http://localhost:8080/short"));
+	TEST_CHECK(test_ssrf("/short", false, "http://localhost:8080/short"));
+}
+
+TORRENT_TEST(ssrf_IPv4)
+{
+	TEST_CHECK(test_ssrf("/announce", true, "http://127.0.0.1:8080/announce"));
+	TEST_CHECK(!test_ssrf("/unusual-announce-path", true, "http://127.0.0.1:8080/unusual-announce-path"));
+	TEST_CHECK(test_ssrf("/unusual-announce-path", false, "http://127.0.0.1:8080/unusual-announce-path"));
+}
+
+TORRENT_TEST(ssrf_IPv6)
+{
+	TEST_CHECK(test_ssrf("/announce", true, "http://[::1]:8080/announce"));
+	TEST_CHECK(!test_ssrf("/unusual-announce-path", true, "http://[::1]:8080/unusual-announce-path"));
+	TEST_CHECK(test_ssrf("/unusual-announce-path", false, "http://[::1]:8080/unusual-announce-path"));
+}
+
+TORRENT_TEST(ssrf_query_string)
+{
+	// tracker URLs that come pre-baked with query string arguments will be
+	// rejected when SSRF-mitigation is enabled
+	TEST_CHECK(!test_ssrf("/announce", true, "http://tracker.com:8080/announce?info_hash=abc"));
+	TEST_CHECK(!test_ssrf("/announce", true, "http://tracker.com:8080/announce?iNfo_HaSh=abc"));
+	TEST_CHECK(!test_ssrf("/announce", true, "http://tracker.com:8080/announce?event=abc"));
+	TEST_CHECK(!test_ssrf("/announce", true, "http://tracker.com:8080/announce?EvEnT=abc"));
+
+	TEST_CHECK(test_ssrf("/announce", false, "http://tracker.com:8080/announce?info_hash=abc"));
+	TEST_CHECK(test_ssrf("/announce", false, "http://tracker.com:8080/announce?iNfo_HaSh=abc"));
+	TEST_CHECK(test_ssrf("/announce", false, "http://tracker.com:8080/announce?event=abc"));
+}
+
+bool test_idna(char const* tracker_url, char const* redirect
+	, bool const feature_on)
+{
+	bool got_announce = false;
+	tracker_test(
+		[&](lt::add_torrent_params& p, lt::session& ses)
+		{
+			settings_pack pack;
+			pack.set_bool(settings_pack::allow_idna, feature_on);
+			ses.apply_settings(pack);
+			p.trackers.emplace_back(tracker_url);
+			return 60;
+		},
+		[&](std::string method, std::string req
+			, std::map<std::string, std::string>& headers)
+		{
+			got_announce = true;
+			return sim::send_response(200, "OK", 11) + "d5:peers0:e";
+		}
+		, [](torrent_handle h) {}
+		, [](torrent_handle h) {}
+		, "/announce"
+		, redirect ? redirect : ""
+		);
+	return got_announce;
+}
+
+TORRENT_TEST(tracker_idna)
+{
+	TEST_EQUAL(test_idna("http://tracker.com:8080/announce", nullptr, true), true);
+	TEST_EQUAL(test_idna("http://tracker.com:8080/announce", nullptr, false), true);
+
+	TEST_EQUAL(test_idna("http://xn--tracker-.com:8080/announce", nullptr, true), true);
+	TEST_EQUAL(test_idna("http://xn--tracker-.com:8080/announce", nullptr, false), false);
+}
+
+TORRENT_TEST(tracker_idna_redirect)
+{
+	TEST_EQUAL(test_idna("http://redirector.com:8080/announce", "http://xn--tracker-.com:8080/announce", true), true);
+	TEST_EQUAL(test_idna("http://redirector.com:8080/announce", "http://xn--tracker-.com:8080/announce", false), false);
 }
 
 // This test sets up two peers, one seed an one downloader. The downloader has

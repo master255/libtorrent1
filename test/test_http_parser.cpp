@@ -778,3 +778,77 @@ TORRENT_TEST(invalid_chunk_3)
 	http_parser parser;
 	feed_bytes(parser, {reinterpret_cast<char const*>(invalid_chunked_input), sizeof(invalid_chunked_input)});
 }
+
+TORRENT_TEST(idna)
+{
+	TEST_CHECK(!is_idna("a.b.com"));
+	TEST_CHECK(!is_idna("example.com"));
+	TEST_CHECK(!is_idna("exn--ample.com"));
+
+	// xn-- is the ACE introducer for a punycoded label. It can appear at the
+	// start of any label, but not in the middle (if it does, it's not
+	// interpreted as an ACE). Since hostnames are case insensitive, the ACE
+	// introducer has to be as well
+	TEST_CHECK(is_idna("xn--example.com"));
+	TEST_CHECK(is_idna("xN--example.com"));
+	TEST_CHECK(is_idna("xn--example-.com"));
+	TEST_CHECK(is_idna("subdomain.xn--example-.com"));
+	TEST_CHECK(is_idna("subdomain.example.xn--com-"));
+
+	// this isn't valid IDNA, but it's suspicious
+	TEST_CHECK(is_idna("xn--.com"));
+
+	// some weird edge-cases
+	TEST_CHECK(!is_idna(".............."));
+	TEST_CHECK(is_idna(".....xn--........."));
+	TEST_CHECK(is_idna(".....Xn--........."));
+	TEST_CHECK(is_idna(".....xN--........."));
+	TEST_CHECK(is_idna(".....XN--........."));
+	TEST_CHECK(!is_idna(".....-xn--........."));
+	TEST_CHECK(is_idna("xn--"));
+	TEST_CHECK(is_idna("Xn--"));
+	TEST_CHECK(is_idna("XN--"));
+	TEST_CHECK(is_idna("xN--"));
+	TEST_CHECK(is_idna("xn--.xn--"));
+	TEST_CHECK(is_idna(".....xn--"));
+	TEST_CHECK(is_idna("xn--..."));
+	TEST_CHECK(is_idna("xN--..."));
+	TEST_CHECK(!is_idna(""));
+	TEST_CHECK(!is_idna("."));
+
+	TEST_CHECK(!is_idna("x"));
+	TEST_CHECK(!is_idna("xn"));
+	TEST_CHECK(!is_idna("xn-"));
+	TEST_CHECK(!is_idna("-xn--"));
+
+	TEST_CHECK(!is_idna(".x"));
+	TEST_CHECK(!is_idna(".xn"));
+	TEST_CHECK(!is_idna(".xn-"));
+	TEST_CHECK(!is_idna(".-xn--"));
+
+	TEST_CHECK(!is_idna("x."));
+	TEST_CHECK(!is_idna("xn."));
+	TEST_CHECK(!is_idna("xn-."));
+	TEST_CHECK(!is_idna("-xn--."));
+}
+
+TORRENT_TEST(has_tracker_query_string)
+{
+	TEST_CHECK(has_tracker_query_string("foo=bar&info_hash=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("info_hash=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("&&info_hash=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("foo=bar&info_hash=abc"_sv));
+
+	TEST_CHECK(has_tracker_query_string("foo=bar&port=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("foo=bar&event=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("foo=bar&downloaded=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("foo=bar&key=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("foo=bar&uploaded=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("foo=bar&corrupt=abc&a=b"_sv));
+	TEST_CHECK(has_tracker_query_string("foo=bar&peer_id=abc&a=b"_sv));
+
+	TEST_CHECK(!has_tracker_query_string("foo=bar&a=b"_sv));
+	TEST_CHECK(!has_tracker_query_string(""_sv));
+	TEST_CHECK(!has_tracker_query_string("info_hash1=abc"_sv));
+	TEST_CHECK(!has_tracker_query_string("&1port=abc"_sv));
+}

@@ -117,7 +117,6 @@ bool is_downloading_state(int const st)
 	switch (st)
 	{
 		case torrent_status::checking_files:
-		case torrent_status::allocating:
 		case torrent_status::checking_resume_data:
 			return false;
 		case torrent_status::downloading_metadata:
@@ -212,7 +211,6 @@ bool is_downloading_state(int const st)
 		, m_max_uploads((1 << 24) - 1)
 		, m_num_uploads(0)
 		, m_enable_pex(!bool(p.flags & torrent_flags::disable_pex))
-		, m_magnet_link(false)
 		, m_apply_ip_filter(p.flags & torrent_flags::apply_ip_filter)
 		, m_pending_active_change(false)
 		, m_connect_boost_counter(static_cast<std::uint8_t>(settings().get_int(settings_pack::torrent_connect_boost)))
@@ -248,25 +246,8 @@ bool is_downloading_state(int const st)
 			inc_stats_counter(counters::non_filter_torrents);
 		}
 
-		if (!p.ti || !p.ti->is_valid())
-		{
-			// we don't have metadata for this torrent. We'll download
-			// it either through the URL passed in, or through a metadata
-			// extension. Make sure that when we save resume data for this
-			// torrent, we also save the metadata
-			m_magnet_link = true;
-		}
-
 		if (!m_torrent_file)
 			m_torrent_file = (p.ti ? p.ti : std::make_shared<torrent_info>(m_info_hash));
-
-		// in case we added the torrent via magnet link, make sure to preserve any
-		// DHT nodes passed in on the URI in the torrent file itself
-		if (!m_torrent_file->is_valid())
-		{
-			for (auto const& n : p.dht_nodes)
-				m_torrent_file->add_node(n);
-		}
 
 		// --- WEB SEEDS ---
 
@@ -764,6 +745,7 @@ bool is_downloading_state(int const st)
 				, settings().get_int(settings_pack::max_http_recv_buffer_size)
 				, http_connect_handler()
 				, http_filter_handler()
+				, hostname_filter_handler()
 #ifdef TORRENT_USE_OPENSSL
 				, m_ssl_ctx.get()
 #endif
@@ -2030,11 +2012,12 @@ bool is_downloading_state(int const st)
 			std::vector<resolve_links::link_t> const& l = res.get_links();
 			if (!l.empty())
 			{
+				links.resize(m_torrent_file->files().num_files());
 				for (auto const& i : l)
 				{
 					if (!i.ti) continue;
-					links.push_back(combine_path(i.save_path
-						, i.ti->files().file_path(i.file_idx)));
+					links[i.file_idx] = combine_path(i.save_path
+						, i.ti->files().file_path(i.file_idx));
 				}
 			}
 		}
@@ -2373,8 +2356,6 @@ bool is_downloading_state(int const st)
 		// we're checking everything anyway, no point in assuming we are a seed
 		// now.
 		leave_seed_mode(seed_mode_t::skip_checking);
-
-		m_ses.disk_thread().async_release_files(m_storage);
 
 		// forget that we have any pieces
 		m_have_all = false;
@@ -4049,6 +4030,7 @@ bool is_downloading_state(int const st)
 				recalc_share_mode();
 #endif
 		}
+		update_want_tick();
 	}
 
 	// this is called when the piece hash is checked as correct. Note
@@ -4133,7 +4115,6 @@ bool is_downloading_state(int const st)
 		m_picker->piece_passed(index);
 		update_gauge();
 		we_have(index);
-		update_want_tick();
 	}
 
 #ifndef TORRENT_DISABLE_PREDICTIVE_PIECES
@@ -5850,6 +5831,23 @@ bool is_downloading_state(int const st)
 		error_code ec;
 		std::tie(protocol, auth, hostname, port, path)
 			= parse_url_components(web->url, ec);
+
+		if (!settings().get_bool(settings_pack::allow_idna) && is_idna(hostname))
+		{
+#ifndef TORRENT_DISABLE_LOGGING
+			if (should_log())
+				debug_log("IDNA disallowed in web seeds: %s", web->url.c_str());
+#endif
+			if (m_ses.alerts().should_post<url_seed_alert>())
+			{
+				m_ses.alerts().emplace_alert<url_seed_alert>(get_handle()
+					, web->url, error_code(errors::banned_by_ip_filter));
+			}
+			// never try it again
+			remove_web_seed_iter(web);
+			return;
+		}
+
 		if (port == -1)
 		{
 			port = protocol == "http" ? 80 : 443;
@@ -6194,14 +6192,55 @@ bool is_downloading_state(int const st)
 		}
 
 		std::string hostname;
+		std::string path;
 		error_code ec;
 		using std::ignore;
-		std::tie(ignore, ignore, hostname, ignore, ignore)
+		std::tie(ignore, ignore, hostname, ignore, path)
 			= parse_url_components(web->url, ec);
 		if (ec)
 		{
 			if (m_ses.alerts().should_post<url_seed_alert>())
 				m_ses.alerts().emplace_alert<url_seed_alert>(get_handle(), web->url, ec);
+			return;
+		}
+
+		if (!settings().get_bool(settings_pack::allow_idna) && is_idna(hostname))
+		{
+#ifndef TORRENT_DISABLE_LOGGING
+			if (should_log())
+				debug_log("IDNA disallowed in web seeds: %s", web->url.c_str());
+#endif
+			if (m_ses.alerts().should_post<url_seed_alert>())
+			{
+				m_ses.alerts().emplace_alert<url_seed_alert>(get_handle()
+					, web->url, error_code(errors::banned_by_ip_filter));
+			}
+			// never try it again
+			remove_web_seed_iter(web);
+			return;
+		}
+
+		// The SSRF mitigation for web seeds is that any HTTP server on the
+		// local network may not use any query string parameters
+		if (settings().get_bool(settings_pack::ssrf_mitigation)
+			&& is_local(web->peer_info.addr)
+			&& path.find('?') != std::string::npos)
+		{
+#ifndef TORRENT_DISABLE_LOGGING
+			if (should_log())
+			{
+				debug_log("*** SSRF MITIGATION BLOCKED WEB SEED: %s"
+					, web->url.c_str());
+			}
+#endif
+			if (m_ses.alerts().should_post<url_seed_alert>())
+				m_ses.alerts().emplace_alert<url_seed_alert>(get_handle()
+					, web->url, errors::banned_by_ip_filter);
+			if (m_ses.alerts().should_post<peer_blocked_alert>())
+				m_ses.alerts().emplace_alert<peer_blocked_alert>(get_handle()
+					, a, peer_blocked_alert::ssrf_mitigation);
+			// never try it again
+			remove_web_seed_iter(web);
 			return;
 		}
 
@@ -6371,12 +6410,9 @@ bool is_downloading_state(int const st)
 
 		ret.info_hash = torrent_file().info_hash();
 
-		if (valid_metadata())
+		if (valid_metadata() && (flags & torrent_handle::save_info_dict))
 		{
-			if (m_magnet_link || (flags & torrent_handle::save_info_dict))
-			{
-				ret.ti = m_torrent_file;
-			}
+			ret.ti = m_torrent_file;
 		}
 
 		if (m_torrent_file->is_merkle_torrent())
@@ -7305,8 +7341,7 @@ bool is_downloading_state(int const st)
 
 		if (is_auto_managed() && !has_error())
 		{
-			if (m_state == torrent_status::checking_files
-				|| m_state == torrent_status::allocating)
+			if (m_state == torrent_status::checking_files)
 			{
 				is_checking = true;
 			}
@@ -7520,6 +7555,7 @@ bool is_downloading_state(int const st)
 	// pieces have been downloaded)
 	void torrent::finished()
 	{
+		update_want_tick();
 		update_state_list();
 
 		INVARIANT_CHECK;
@@ -7593,8 +7629,7 @@ bool is_downloading_state(int const st)
 //		INVARIANT_CHECK;
 
 		TORRENT_ASSERT(m_state != torrent_status::checking_resume_data
-			&& m_state != torrent_status::checking_files
-			&& m_state != torrent_status::allocating);
+			&& m_state != torrent_status::checking_files);
 
 		// we're downloading now, which means we're no longer in seed mode
 		if (m_seed_mode)
@@ -8017,8 +8052,7 @@ bool is_downloading_state(int const st)
 
 		if (is_auto_managed() && !has_error())
 		{
-			if (m_state == torrent_status::checking_files
-				|| m_state == torrent_status::allocating)
+			if (m_state == torrent_status::checking_files)
 			{
 				is_checking = true;
 			}
@@ -8202,6 +8236,7 @@ bool is_downloading_state(int const st)
 	{
 		TORRENT_ASSERT(is_single_thread());
 		if (m_sequential_download == sd) return;
+		if (!sd) set_sequential_start(piece_index_t(0));
 		m_sequential_download = sd;
 #ifndef TORRENT_DISABLE_LOGGING
 		debug_log("*** set-sequential-download: %d", sd);
@@ -8936,19 +8971,19 @@ bool is_downloading_state(int const st)
 
 		clear_error();
 
-		if (m_state == torrent_status::checking_files)
+		if (m_state == torrent_status::checking_files
+			&& m_auto_managed)
 		{
-			if (m_auto_managed) m_ses.trigger_auto_manage();
-			if (should_check_files()) start_checking();
+			m_ses.trigger_auto_manage();
 		}
+
+		if (should_check_files()) start_checking();
 
 		state_updated();
 		update_want_peers();
 		update_want_tick();
 		update_want_scrape();
 		update_gauge();
-
-		if (should_check_files()) start_checking();
 
 		if (m_state == torrent_status::checking_files) return;
 
@@ -11080,10 +11115,10 @@ bool is_downloading_state(int const st)
 		TORRENT_ASSERT(static_cast<int>(reason) >= 0);
 		TORRENT_ASSERT(static_cast<int>(reason) < static_cast<int>(waste_reason::max));
 
-		if (m_total_redundant_bytes <= std::numeric_limits<std::int32_t>::max() - b)
+		if (m_total_redundant_bytes <= std::numeric_limits<std::int64_t>::max() - b)
 			m_total_redundant_bytes += b;
 		else
-			m_total_redundant_bytes = std::numeric_limits<std::int32_t>::max();
+			m_total_redundant_bytes = std::numeric_limits<std::int64_t>::max();
 
 		// the stats counters are 64 bits, so we don't check for overflow there
 		m_stats_counters.inc_stats_counter(counters::recv_redundant_bytes, b);
@@ -11094,10 +11129,10 @@ bool is_downloading_state(int const st)
 	{
 		TORRENT_ASSERT(is_single_thread());
 		TORRENT_ASSERT(b > 0);
-		if (m_total_failed_bytes <= std::numeric_limits<std::int32_t>::max() - b)
+		if (m_total_failed_bytes <= std::numeric_limits<std::int64_t>::max() - b)
 			m_total_failed_bytes += b;
 		else
-			m_total_failed_bytes = std::numeric_limits<std::int32_t>::max();
+			m_total_failed_bytes = std::numeric_limits<std::int64_t>::max();
 
 		// the stats counters are 64 bits, so we don't check for overflow there
 		m_stats_counters.inc_stats_counter(counters::recv_failed_bytes, b);

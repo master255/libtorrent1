@@ -124,7 +124,7 @@ constexpr int CLOSE_FILE_INTERVAL = 0;
 		SET(proxy_username, "", &session_impl::update_proxy),
 		SET(proxy_password, "", &session_impl::update_proxy),
 		SET(i2p_hostname, "", &session_impl::update_i2p_bridge),
-		SET(peer_fingerprint, "-LT12A0-", nullptr),
+		SET(peer_fingerprint, "-LT12C0-", nullptr),
 		SET(dht_bootstrap_nodes, "dht.libtorrent.org:25401", &session_impl::update_dht_bootstrap_nodes)
 	}});
 
@@ -210,7 +210,9 @@ constexpr int CLOSE_FILE_INTERVAL = 0;
 		SET(enable_ip_notifier, true, &session_impl::update_ip_notifier),
 		SET(dht_prefer_verified_node_ids, true, &session_impl::update_dht_settings),
 		SET(piece_extent_affinity, false, nullptr),
-		SET(validate_https_trackers, false, &session_impl::update_validate_https),
+		SET(validate_https_trackers, true, &session_impl::update_validate_https),
+		SET(ssrf_mitigation, true, nullptr),
+		SET(allow_idna, false, nullptr),
 	}});
 
 	aux::array<int_setting_entry_t, settings_pack::num_int_settings> const int_settings
