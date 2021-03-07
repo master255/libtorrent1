@@ -546,7 +546,7 @@ cpp
 tos
 BP
 qB
-LT12C0
+LT12D0
 iocontrol
 getname
 getpeername
@@ -564,3 +564,12 @@ DOPENSSL
 fd
 socketpair
 fileno
+SSRF
+IDNA
+toolchain
+distutils
+virtualenv
+virtualenvs
+pyenv
+tox
+args

@@ -770,6 +770,9 @@ bool is_downloading_state(int const st)
 		{
 			inc_stats_counter(counters::non_filter_torrents);
 		}
+
+		set_need_save_resume();
+
 		m_apply_ip_filter = b;
 		ip_filter_updated();
 		state_updated();
@@ -1028,11 +1031,23 @@ bool is_downloading_state(int const st)
 		if (mask & torrent_flags::stop_when_ready)
 			stop_when_ready(bool(flags & torrent_flags::stop_when_ready));
 		if (mask & torrent_flags::disable_dht)
-			m_enable_dht = !bool(flags & torrent_flags::disable_dht);
+		{
+			bool const new_value = !bool(flags & torrent_flags::disable_dht);
+			if (m_enable_dht != new_value) set_need_save_resume();
+			m_enable_dht = new_value;
+		}
 		if (mask & torrent_flags::disable_lsd)
-			m_enable_lsd = !bool(flags & torrent_flags::disable_lsd);
+		{
+			bool const new_value = !bool(flags & torrent_flags::disable_lsd);
+			if (m_enable_lsd != new_value) set_need_save_resume();
+			m_enable_lsd = new_value;
+		}
 		if (mask & torrent_flags::disable_pex)
-			m_enable_pex = !bool(flags & torrent_flags::disable_pex);
+		{
+			bool const new_value = !bool(flags & torrent_flags::disable_pex);
+			if (m_enable_pex != new_value) set_need_save_resume();
+			m_enable_pex = new_value;
+		}
 	}
 
 #ifndef TORRENT_DISABLE_SHARE_MODE
@@ -1041,6 +1056,7 @@ bool is_downloading_state(int const st)
 		if (s == m_share_mode) return;
 
 		m_share_mode = s;
+		set_need_save_resume();
 #ifndef TORRENT_DISABLE_LOGGING
 		debug_log("*** set-share-mode: %d", s);
 #endif
@@ -1065,6 +1081,7 @@ bool is_downloading_state(int const st)
 		debug_log("*** set-upload-mode: %d", b);
 #endif
 
+		set_need_save_resume();
 		update_gauge();
 		state_updated();
 		send_upload_only();
@@ -4655,6 +4672,8 @@ bool is_downloading_state(int const st)
 				alerts().emplace_alert<file_renamed_alert>(get_handle()
 					, filename, file_idx);
 			m_torrent_file->rename_file(file_idx, filename);
+
+			set_need_save_resume();
 		}
 	}
 	catch (...) { handle_exception(); }
@@ -5458,6 +5477,7 @@ bool is_downloading_state(int const st)
 			{ return lhs.tier < rhs.tier; });
 		if (k - m_trackers.begin() < m_last_working_tracker) ++m_last_working_tracker;
 		k = m_trackers.insert(k, url);
+		set_need_save_resume();
 		if (k->source == 0) k->source = announce_entry::source_client;
 		if (m_announcing && !m_trackers.empty()) announce_with_tracker();
 		return true;
@@ -5841,7 +5861,7 @@ bool is_downloading_state(int const st)
 			if (m_ses.alerts().should_post<url_seed_alert>())
 			{
 				m_ses.alerts().emplace_alert<url_seed_alert>(get_handle()
-					, web->url, error_code(errors::banned_by_ip_filter));
+					, web->url, error_code(errors::blocked_by_idna));
 			}
 			// never try it again
 			remove_web_seed_iter(web);
@@ -6213,7 +6233,7 @@ bool is_downloading_state(int const st)
 			if (m_ses.alerts().should_post<url_seed_alert>())
 			{
 				m_ses.alerts().emplace_alert<url_seed_alert>(get_handle()
-					, web->url, error_code(errors::banned_by_ip_filter));
+					, web->url, error_code(errors::blocked_by_idna));
 			}
 			// never try it again
 			remove_web_seed_iter(web);
@@ -6235,7 +6255,7 @@ bool is_downloading_state(int const st)
 #endif
 			if (m_ses.alerts().should_post<url_seed_alert>())
 				m_ses.alerts().emplace_alert<url_seed_alert>(get_handle()
-					, web->url, errors::banned_by_ip_filter);
+					, web->url, errors::ssrf_mitigation);
 			if (m_ses.alerts().should_post<peer_blocked_alert>())
 				m_ses.alerts().emplace_alert<peer_blocked_alert>(get_handle()
 					, a, peer_blocked_alert::ssrf_mitigation);
