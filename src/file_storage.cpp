@@ -897,10 +897,17 @@ namespace {
         return m_files[index].encrypt_path;
     }
 
-    void file_storage::set_encrypt_path(file_index_t const index, std::string const encrypt_path)
+    bool file_storage::get_preload(file_index_t const index) const
+    {
+        TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
+        return m_files[index].preload;
+    }
+
+    void file_storage::set_params(file_index_t const index, std::string const encrypt_path, bool const preload)
     {
         TORRENT_ASSERT_PRECOND(index >= file_index_t(0) && index < end_file());
         m_files[index].encrypt_path = encrypt_path;
+        m_files[index].preload = preload;
     }
 
 	bool file_storage::pad_file_at(file_index_t const index) const
