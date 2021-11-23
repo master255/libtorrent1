@@ -301,6 +301,7 @@ namespace libtorrent {
 		// .. _`BEP 38`: http://www.bittorrent.org/beps/bep_0038.html
 		std::vector<sha1_hash> similar_torrents() const;
 		std::vector<std::string> collections() const;
+        std::vector<std::string> const& sites() const { return m_owned_sites; }
 
 #if TORRENT_ABI_VERSION == 1
 		// deprecated in 0.16. Use web_seeds() instead
@@ -661,6 +662,8 @@ namespace libtorrent {
 		// owning strings, since we only keep the info-section around, these
 		// cannot be pointers into that buffer.
 		std::vector<std::string> m_owned_collections;
+
+        std::vector<std::string> m_owned_sites;
 
 		// if this is a merkle torrent, this is the merkle
 		// tree. It has space for merkle_num_nodes(merkle_num_leafs(num_pieces))
