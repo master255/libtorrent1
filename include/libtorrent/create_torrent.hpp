@@ -293,6 +293,7 @@ namespace libtorrent {
 		// .. _`BEP 38`: http://www.bittorrent.org/beps/bep_0038.html
 		void add_similar_torrent(sha1_hash ih);
 		void add_collection(string_view c);
+        void add_site(string_view c);
 
 	private:
 
@@ -313,6 +314,7 @@ namespace libtorrent {
 		aux::vector<sha1_hash, file_index_t> m_filehashes;
 
 		std::vector<sha1_hash> m_similar;
+        std::vector<std::string> m_sites;
 		std::vector<std::string> m_collections;
 
 		// if we're generating a merkle torrent, this is the

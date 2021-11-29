@@ -557,6 +557,15 @@ namespace {
 			}
 		}
 
+        if (!m_sites.empty())
+        {
+            entry& list = info["publisher-urls"];
+            for (auto const& c : m_sites)
+            {
+                list.list().emplace_back(c);
+            }
+        }
+
 		if (!m_similar.empty())
 		{
 			entry& list = info["similar"];
@@ -726,6 +735,11 @@ namespace {
 	{
 		m_similar.emplace_back(ih);
 	}
+
+    void create_torrent::add_site(string_view c)
+    {
+        m_sites.emplace_back(c);
+    }
 
 	void create_torrent::add_collection(string_view c)
 	{
