@@ -1187,7 +1187,19 @@ namespace {
 					+ info_ptr_diff);
 			}
 		}
+        bdecode_node const sites = info.dict_find_list("publisher-urls");
+        if (sites)
+        {
+            for (int i = 0; i < sites.list_size(); ++i)
+            {
+                bdecode_node const str = sites.list_at(i);
 
+                if (str.type() != bdecode_node::string_t) continue;
+
+                m_owned_sites.emplace_back(str.string_ptr()
+                        , aux::numeric_cast<std::size_t>(str.string_length()));
+            }
+        }
 		bdecode_node const collections = info.dict_find_list("collections");
 		if (collections)
 		{
@@ -1383,20 +1395,6 @@ namespace {
 					, aux::numeric_cast<std::size_t>(str.string_length()));
 			}
 		}
-
-        bdecode_node const sites = torrent_file.dict_find_list("publisher-urls");
-        if (sites)
-        {
-            for (int i = 0; i < sites.list_size(); ++i)
-            {
-                bdecode_node const str = sites.list_at(i);
-
-                if (str.type() != bdecode_node::string_t) continue;
-
-                m_owned_sites.emplace_back(str.string_ptr()
-                        , aux::numeric_cast<std::size_t>(str.string_length()));
-            }
-        }
 #endif // TORRENT_DISABLE_MUTABLE_TORRENTS
 
 		// extract the url of the tracker
