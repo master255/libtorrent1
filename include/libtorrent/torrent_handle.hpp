@@ -934,8 +934,6 @@ namespace aux {
 		// deprecated in 0.14
 		// use save_resume_data() instead. It is async. and
 		// will return the resume data in an alert
-		TORRENT_DEPRECATED
-		entry write_resume_data() const;
 
 		// ``use_interface()`` sets the network interface this torrent will use
 		// when it opens outgoing connections. By default, it uses the same
@@ -948,7 +946,7 @@ namespace aux {
 		void use_interface(const char* net_interface) const;
 		// ================ end deprecation ============
 #endif
-
+        entry write_resume_data() const;
 		// Fills the specified ``std::vector<int>`` with the availability for
 		// each piece in this torrent. libtorrent does not keep track of
 		// availability for seeds, so if the torrent is seeding the availability

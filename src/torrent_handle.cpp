@@ -725,14 +725,6 @@ namespace libtorrent {
 		return *r;
 	}
 
-	entry torrent_handle::write_resume_data() const
-	{
-		add_torrent_params params;
-		auto retr = std::ref(params);
-		sync_call(&torrent::write_resume_data, resume_data_flags_t{}, retr);
-		return libtorrent::write_resume_data(params);
-	}
-
 	std::string torrent_handle::save_path() const
 	{
 		return sync_call_ret<std::string>("", &torrent::save_path);
@@ -744,6 +736,14 @@ namespace libtorrent {
 	}
 
 #endif
+
+    entry torrent_handle::write_resume_data() const
+    {
+        add_torrent_params params;
+        auto retr = std::ref(params);
+        sync_call(&torrent::write_resume_data, resume_data_flags_t{}, retr);
+        return libtorrent::write_resume_data(params);
+    }
 
 	void torrent_handle::connect_peer(tcp::endpoint const& adr
 		, peer_source_flags_t const source, pex_flags_t const flags) const
