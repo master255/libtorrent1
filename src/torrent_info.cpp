@@ -1200,6 +1200,36 @@ namespace {
                         , aux::numeric_cast<std::size_t>(str.string_length()));
             }
         }
+
+        // if there are any url-seeds, extract them
+        bdecode_node const url_seeds = info.dict_find("url-list");
+        if (url_seeds && url_seeds.type() == bdecode_node::string_t
+            && url_seeds.string_length() > 0)
+        {
+            web_seed_entry ent(maybe_url_encode(url_seeds.string_value().to_string())
+                    , web_seed_entry::url_seed);
+            if ((m_flags & multifile) && num_files() > 1)
+                ensure_trailing_slash(ent.url);
+            m_web_seeds.push_back(ent);
+        }
+        else if (url_seeds && url_seeds.type() == bdecode_node::list_t)
+        {
+            // only add a URL once
+            std::set<std::string> unique;
+            for (int i = 0, end(url_seeds.list_size()); i < end; ++i)
+            {
+                bdecode_node const url = url_seeds.list_at(i);
+                if (url.type() != bdecode_node::string_t) continue;
+                if (url.string_length() == 0) continue;
+                web_seed_entry ent(maybe_url_encode(url.string_value().to_string())
+                        , web_seed_entry::url_seed);
+                if ((m_flags & multifile) && num_files() > 1)
+                    ensure_trailing_slash(ent.url);
+                if (!unique.insert(ent.url).second) continue;
+                m_web_seeds.push_back(ent);
+            }
+        }
+
 		bdecode_node const collections = info.dict_find_list("collections");
 		if (collections)
 		{

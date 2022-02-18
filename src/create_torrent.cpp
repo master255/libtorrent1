@@ -190,8 +190,8 @@ namespace aux {
 		struct ::stat s{};
 		if (::lstat(path.c_str(), &s) < 0) return {};
 		file_flags_t file_attr = {};
-		if (s.st_mode & S_IXUSR)
-			file_attr |= file_storage::flag_executable;
+//		if (s.st_mode & S_IXUSR)
+//			file_attr |= file_storage::flag_executable;
 		if (S_ISLNK(s.st_mode))
 			file_attr |= file_storage::flag_symlink;
 		return file_attr;
@@ -508,22 +508,6 @@ namespace {
 		if (!m_created_by.empty())
 			dict["created by"] = m_created_by;
 
-		if (!m_url_seeds.empty())
-		{
-			if (m_url_seeds.size() == 1)
-			{
-				dict["url-list"] = m_url_seeds.front();
-			}
-			else
-			{
-				entry& list = dict["url-list"];
-				for (auto const& url : m_url_seeds)
-				{
-					list.list().emplace_back(url);
-				}
-			}
-		}
-
 		if (!m_http_seeds.empty())
 		{
 			if (m_http_seeds.size() == 1)
@@ -563,6 +547,22 @@ namespace {
             for (auto const& c : m_sites)
             {
                 list.list().emplace_back(c);
+            }
+        }
+
+        if (!m_url_seeds.empty())
+        {
+            if (m_url_seeds.size() == 1)
+            {
+                info["url-list"] = m_url_seeds.front();
+            }
+            else
+            {
+                entry& list = info["url-list"];
+                for (auto const& url : m_url_seeds)
+                {
+                    list.list().emplace_back(url);
+                }
             }
         }
 
