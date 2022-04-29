@@ -745,6 +745,10 @@ namespace aux {
 			// tree piece message
 			support_merkle_torrents,
 
+			support_urlseed_redirection,
+
+			disconnect_torrent_on_urlseed,
+
 			// if this is true, the number of redundant bytes is sent to the
 			// tracker
 			report_redundant_bytes,
@@ -1149,6 +1153,8 @@ namespace aux {
 			// port is in ``TIME_WAIT`` state.
 			outgoing_port,
 			num_outgoing_ports,
+
+			urlseed_port,
 
 			// ``peer_tos`` determines the TOS byte set in the IP header of every
 			// packet sent to peers (including web seeds). ``0x0`` means no marking,

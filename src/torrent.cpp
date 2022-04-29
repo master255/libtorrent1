@@ -8888,6 +8888,27 @@ bool is_downloading_state(int const st)
 		return &m_web_seeds.back();
 	}
 
+    web_seed_t* torrent::add_web_seed_port(std::string const& adr, int const port)
+    {
+        std::string const& url = "https://" + adr + ":" + std::to_string(port) + "/";
+        web_seed_t ent(url, web_seed_entry::url_seed, std::string(), web_seed_entry::headers_t());
+
+        // don't add duplicates
+        auto const it = std::find(m_web_seeds.begin(), m_web_seeds.end(), ent);
+        if (it != m_web_seeds.end()) return &*it;
+
+        char const* addressUrl = ("https://" + adr + ":").c_str();
+        for (auto i = m_web_seeds.begin(); i != m_web_seeds.end(); i++) {
+            if (string_begins_no_case(addressUrl, i->url.c_str())) {
+                remove_web_seed_iter(i);
+            }
+        }
+        m_web_seeds.push_back(ent);
+        set_need_save_resume();
+        update_want_tick();
+        return &m_web_seeds.back();
+    }
+
 	void torrent::set_session_paused(bool const b)
 	{
 		if (m_session_paused == b) return;
@@ -10780,6 +10801,17 @@ bool is_downloading_state(int const st)
 		}
 #endif
 	}
+
+    bool torrent::check_file_exist(std::string const& path)
+    {
+        file_storage const& fs = m_torrent_file->files();
+        for (auto const i : fs.file_range())
+        {
+            if (m_torrent_file->files().file_path(i) == path)
+                return true;
+        }
+        return false;
+    }
 
 #ifndef TORRENT_DISABLE_EXTENSIONS
 	void torrent::notify_extension_add_peer(tcp::endpoint const& ip

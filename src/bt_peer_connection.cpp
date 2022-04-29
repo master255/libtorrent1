@@ -1723,6 +1723,26 @@ namespace {
 		if (is_disconnecting()) return;
 #endif
 
+        if (m_settings.get_bool(settings_pack::support_urlseed_redirection) && t->valid_metadata())
+        {
+            int const url_port = int(root.dict_find_int_value("up"));
+            if (url_port > 0 && peer_info_struct() != nullptr) {
+                ec.clear();
+                std::string const address = peer_info_struct()->address().to_string(ec);
+                if (!ec) {
+                    if (m_settings.get_bool(settings_pack::allow_multiple_connections_per_ip)) {
+                        t->add_web_seed("https://" + address + ":" + std::to_string(url_port) + "/", web_seed_entry::url_seed, std::string(), web_seed_entry::headers_t(),web_seed_flag_t{});
+                    } else {
+                        t->add_web_seed_port(address, url_port);
+                    }
+                    if (m_settings.get_bool(settings_pack::disconnect_torrent_on_urlseed)) {
+                        disconnect(errors::duplicate_peer_id, operation_t::bittorrent);
+                        return;
+                    }
+                }
+            }
+        }
+
 		// upload_only
 		if (bdecode_node const m = root.dict_find_dict("m"))
 		{
@@ -2119,6 +2139,9 @@ namespace {
 				, local_endpoint().address());
 			if (port != 0) handshake["p"] = port;
 		}
+
+        int const port = m_settings.get_int(settings_pack::urlseed_port);
+        if (port != 0) handshake["up"] = port;
 
 		// only send the port in case we bade the connection
 		// on incoming connections the other end already knows

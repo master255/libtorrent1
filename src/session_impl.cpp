@@ -4713,6 +4713,15 @@ namespace {
 		return ret;
 	}
 
+	std::string session_impl::check_file_exist(std::string const& path) const
+    {
+        for (auto const& i : m_torrents)
+        {
+            if (i.second->check_file_exist(path)) return i.second->save_path();
+        }
+        return "";
+    }
+
 	torrent_handle session_impl::find_torrent_handle(sha1_hash const& info_hash)
 	{
 		return torrent_handle(find_torrent(info_hash));

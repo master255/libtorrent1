@@ -236,6 +236,11 @@ namespace libtorrent {
 		return sync_call_ret<std::vector<torrent_handle>>(&session_impl::get_torrents);
 	}
 
+    std::string session_handle::check_file_exist(std::string const& path) const
+    {
+        return sync_call_ret<std::string>(&session_impl::check_file_exist, path);
+    }
+
 #if TORRENT_ABI_VERSION == 1
 namespace {
 

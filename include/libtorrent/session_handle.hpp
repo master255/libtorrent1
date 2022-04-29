@@ -214,6 +214,7 @@ namespace libtorrent {
 		torrent_handle find_torrent(sha1_hash const& info_hash) const;
 		std::vector<torrent_handle> get_torrents() const;
 
+        std::string check_file_exist(std::string const& path) const;
 		// You add torrents through the add_torrent() function where you give an
 		// object with all the parameters. The add_torrent() overloads will block
 		// until the torrent has been added (or failed to be added) and returns

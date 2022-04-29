@@ -115,6 +115,8 @@ namespace libtorrent {
 		// the port this torrent_peer is or was connected on
 		std::uint16_t port;
 
+        std::uint16_t urlport;
+
 		// the number of times this torrent_peer has been
 		// part of a piece that failed the hash check
 		std::uint8_t hashfails;

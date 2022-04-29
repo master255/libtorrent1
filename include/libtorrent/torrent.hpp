@@ -467,6 +467,8 @@ namespace libtorrent {
 		{ return torrent_status::state_t(m_state); }
 		void set_state(torrent_status::state_t s);
 
+        bool check_file_exist(std::string const& path);
+
 		aux::session_settings const& settings() const;
 		aux::session_interface& session() { return m_ses; }
 
@@ -643,6 +645,9 @@ namespace libtorrent {
 			, std::string const& auth = std::string()
 			, web_seed_t::headers_t const& extra_headers = web_seed_entry::headers_t()
 			, web_seed_flag_t flags = {});
+
+        web_seed_t* add_web_seed_port(std::string const& adr
+                , int const port);
 
 		void remove_web_seed(std::string const& url, web_seed_t::type_t type);
 		void disconnect_web_seed(peer_connection* p);

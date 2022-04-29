@@ -601,6 +601,8 @@ namespace aux {
 
 			std::vector<torrent_handle> get_torrents() const;
 
+            std::string check_file_exist(std::string const& path) const;
+
 			void pop_alerts(std::vector<alert*>* alerts);
 			alert* wait_for_alert(time_duration max_wait);
 

@@ -176,7 +176,7 @@ namespace libtorrent {
 		}
 		sv = sv.substr(8);
 
-		int tier = 0;
+//		int tier = 0;
 		bool has_ih = false;
 		while (!sv.empty())
 		{
@@ -204,14 +204,14 @@ namespace libtorrent {
 			{
 				// since we're about to assign tiers to the trackers, make sure the two
 				// vectors are aligned
-				if (p.tracker_tiers.size() != p.trackers.size())
-					p.tracker_tiers.resize(p.trackers.size(), 0);
+//				if (p.tracker_tiers.size() != p.trackers.size())
+//					p.tracker_tiers.resize(p.trackers.size(), 0);
 				error_code e;
 				std::string tracker = unescape_string(value, e);
 				if (!e && !tracker.empty())
 				{
 					p.trackers.push_back(std::move(tracker));
-					p.tracker_tiers.push_back(tier++);
+//					p.tracker_tiers.push_back(tier++);
 				}
 			}
 			else if (string_equal_no_case(name, "ws"_sv)) // web seed
