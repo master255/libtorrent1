@@ -12,6 +12,7 @@
 #include "libtorrent/socket_io.hpp"
 #include "libtorrent/announce_entry.hpp"
 #include "bytes.hpp"
+#include "gil.hpp"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -128,51 +129,124 @@ namespace
 #if TORRENT_ABI_VERSION == 1
     // Create getters for announce_entry data members with non-trivial types which need converting.
     lt::time_point get_next_announce(announce_entry const& ae)
-    { return ae.endpoints.empty() ? lt::time_point() : lt::time_point(ae.endpoints.front().next_announce); }
+    {
+        python_deprecated("next_announce is deprecated");
+        return ae.endpoints.empty() ? lt::time_point() : lt::time_point(ae.endpoints.front().next_announce);
+    }
     lt::time_point get_min_announce(announce_entry const& ae)
-    { return ae.endpoints.empty() ? lt::time_point() : lt::time_point(ae.endpoints.front().min_announce); }
+    {
+        python_deprecated("min_announce is deprecated");
+        return ae.endpoints.empty() ? lt::time_point() : lt::time_point(ae.endpoints.front().min_announce);
+    }
     // announce_entry data member bit-fields.
     int get_fails(announce_entry const& ae)
-    { return ae.endpoints.empty() ? 0 : ae.endpoints.front().fails; }
+    {
+        python_deprecated("fails is deprecated");
+        return ae.endpoints.empty() ? 0 : ae.endpoints.front().fails;
+    }
     bool get_updating(announce_entry const& ae)
-    { return ae.endpoints.empty() ? false : ae.endpoints.front().updating; }
+    {
+        python_deprecated("updating is deprecated");
+        return ae.endpoints.empty() ? false : ae.endpoints.front().updating;
+    }
     bool get_start_sent(announce_entry const& ae)
-    { return ae.endpoints.empty() ? false : ae.endpoints.front().start_sent; }
+    {
+        python_deprecated("start_sent is deprecated");
+        return ae.endpoints.empty() ? false : ae.endpoints.front().start_sent;
+    }
     bool get_complete_sent(announce_entry const& ae)
-    { return ae.endpoints.empty() ? false : ae.endpoints.front().complete_sent; }
+    {
+        python_deprecated("complete_sent is deprecated");
+        return ae.endpoints.empty() ? false : ae.endpoints.front().complete_sent;
+    }
     // announce_entry method requires lt::time_point.
     bool can_announce(announce_entry const& ae, bool is_seed) {
+        python_deprecated("can_announce() is deprecated");
         // an entry without endpoints implies it has never been announced so it can be now
         if (ae.endpoints.empty()) return true;
         lt::time_point now = lt::clock_type::now();
         return ae.endpoints.front().can_announce(now, is_seed, ae.fail_limit);
     }
     bool is_working(announce_entry const& ae)
-    { return ae.endpoints.empty() ? false : ae.endpoints.front().is_working(); }
+    {
+        python_deprecated("is_working is deprecated");
+        return ae.endpoints.empty() ? false : ae.endpoints.front().is_working();
+    }
 #endif
     int get_source(announce_entry const& ae) { return ae.source; }
     bool get_verified(announce_entry const& ae) { return ae.verified; }
 
 #if TORRENT_ABI_VERSION == 1
     std::string get_message(announce_entry const& ae)
-    { return ae.endpoints.empty() ? "" : ae.endpoints.front().message; }
+    {
+        python_deprecated("message is deprecated");
+        return ae.endpoints.empty() ? "" : ae.endpoints.front().message;
+    }
     error_code get_last_error(announce_entry const& ae)
-    { return ae.endpoints.empty() ? error_code() : ae.endpoints.front().last_error; }
+    {
+        python_deprecated("last_error is deprecated");
+        return ae.endpoints.empty() ? error_code() : ae.endpoints.front().last_error;
+    }
     int get_scrape_incomplete(announce_entry const& ae)
-    { return ae.endpoints.empty() ? 0 : ae.endpoints.front().scrape_incomplete; }
+    {
+        python_deprecated("scrape_incomplete is deprecated");
+        return ae.endpoints.empty() ? 0 : ae.endpoints.front().scrape_incomplete;
+    }
     int get_scrape_complete(announce_entry const& ae)
-    { return ae.endpoints.empty() ? 0 : ae.endpoints.front().scrape_complete; }
+    {
+        python_deprecated("scrape_complete is deprecated");
+        return ae.endpoints.empty() ? 0 : ae.endpoints.front().scrape_complete;
+    }
     int get_scrape_downloaded(announce_entry const& ae)
-    { return ae.endpoints.empty() ? 0 : ae.endpoints.front().scrape_downloaded; }
-    int next_announce_in(announce_entry const&) { return 0; }
-    int min_announce_in(announce_entry const&) { return 0; }
-    bool get_send_stats(announce_entry const& ae) { return ae.send_stats; }
-    std::int64_t get_size(file_entry const& fe) { return fe.size; }
-    std::int64_t get_offset(file_entry const& fe) { return fe.offset; }
-    bool get_pad_file(file_entry const& fe) { return fe.pad_file; }
-    bool get_executable_attribute(file_entry const& fe) { return fe.executable_attribute; }
-    bool get_hidden_attribute(file_entry const& fe) { return fe.hidden_attribute; }
-    bool get_symlink_attribute(file_entry const& fe) { return fe.symlink_attribute; }
+    {
+        python_deprecated("scrape_downloaded is deprecated");
+        return ae.endpoints.empty() ? 0 : ae.endpoints.front().scrape_downloaded;
+    }
+    int next_announce_in(announce_entry const&)
+    {
+        python_deprecated("next_announce_in is deprecated");
+        return 0;
+    }
+    int min_announce_in(announce_entry const&)
+    {
+        python_deprecated("min_announce_in is deprecated");
+        return 0;
+    }
+    bool get_send_stats(announce_entry const& ae)
+    {
+        python_deprecated("send_stats is deprecated");
+        return ae.send_stats;
+    }
+    std::int64_t get_size(file_entry const& fe)
+    {
+        python_deprecated("file_entry is deprecated");
+        return fe.size;
+    }
+    std::int64_t get_offset(file_entry const& fe)
+    {
+        python_deprecated("file_entry is deprecated");
+        return fe.offset;
+    }
+    bool get_pad_file(file_entry const& fe)
+    {
+        python_deprecated("file_entry is deprecated");
+        return fe.pad_file;
+    }
+    bool get_executable_attribute(file_entry const& fe)
+    {
+        python_deprecated("file_entry is deprecated");
+        return fe.executable_attribute;
+    }
+    bool get_hidden_attribute(file_entry const& fe)
+    {
+        python_deprecated("file_entry is deprecated");
+        return fe.hidden_attribute;
+    }
+    bool get_symlink_attribute(file_entry const& fe)
+    {
+        python_deprecated("file_entry is deprecated");
+        return fe.symlink_attribute;
+    }
 #endif
 
 load_torrent_limits dict_to_limits(dict limits)
@@ -225,25 +299,27 @@ std::shared_ptr<torrent_info> buffer_constructor1(bytes b, dict limits)
    return ret;
 }
 
-std::shared_ptr<torrent_info> file_constructor0(std::string const& filename)
+std::shared_ptr<torrent_info> file_constructor0(lt::string_view filename)
 {
-   return std::make_shared<torrent_info>(filename);
+   return std::make_shared<torrent_info>(std::string(filename));
 }
 
-std::shared_ptr<torrent_info> file_constructor1(std::string const& filename, dict limits)
+std::shared_ptr<torrent_info> file_constructor1(lt::string_view filename, dict limits)
 {
-   return std::make_shared<torrent_info>(filename, dict_to_limits(limits));
+   return std::make_shared<torrent_info>(std::string(filename), dict_to_limits(limits));
 }
 
-std::shared_ptr<torrent_info> bencoded_constructor0(entry const& ent)
+std::shared_ptr<torrent_info> bencoded_constructor0(dict d)
 {
+    entry ent = extract<entry>(d);
     std::vector<char> buf;
     bencode(std::back_inserter(buf), ent);
     return std::make_shared<torrent_info>(buf, lt::from_span);
 }
 
-std::shared_ptr<torrent_info> bencoded_constructor1(entry const& ent, dict limits)
+std::shared_ptr<torrent_info> bencoded_constructor1(dict d, dict limits)
 {
+    entry ent = extract<entry>(d);
     std::vector<char> buf;
     bencode(std::back_inserter(buf), ent);
     return std::make_shared<torrent_info>(buf, dict_to_limits(limits)
@@ -256,11 +332,6 @@ void bind_torrent_info()
     return_value_policy<copy_const_reference> copy;
 
     void (torrent_info::*rename_file0)(file_index_t, std::string const&) = &torrent_info::rename_file;
-#if TORRENT_ABI_VERSION == 1
-#ifdef TORRENT_WINDOWS
-    void (torrent_info::*rename_file1)(file_index_t, std::wstring const&) = &torrent_info::rename_file;
-#endif
-#endif
 
     class_<file_slice>("file_slice")
         .add_property("file_index", make_getter((&file_slice::file_index), by_value()))
@@ -287,15 +358,15 @@ void bind_torrent_info()
         .def("__init__", make_constructor(&file_constructor1))
         .def(init<torrent_info const&>((arg("ti"))))
 
-#if TORRENT_ABI_VERSION == 1
-#ifdef TORRENT_WINDOWS
-        .def(init<std::wstring>((arg("file"))))
-#endif
-#endif
-
-        .def("add_tracker", (add_tracker1)&torrent_info::add_tracker, arg("url"), arg("tier") = 0, arg("source") = announce_entry::source_client)
-        .def("add_url_seed", &torrent_info::add_url_seed)
-        .def("add_http_seed", &torrent_info::add_http_seed)
+        .def("add_tracker", (add_tracker1)&torrent_info::add_tracker
+            , (arg("url"), arg("tier") = 0
+            , arg("source") = announce_entry::source_client))
+        .def("add_url_seed", &torrent_info::add_url_seed, (arg("url")
+            , arg("extern_auth") = std::string{}
+            , arg("extra_headers") = web_seed_entry::headers_t{}))
+        .def("add_http_seed", &torrent_info::add_http_seed, (arg("url")
+            , arg("extern_auth") = std::string{}
+            , arg("extra_headers") = web_seed_entry::headers_t{}))
         .def("web_seeds", get_web_seeds)
         .def("set_web_seeds", set_web_seeds)
 
@@ -320,11 +391,7 @@ void bind_torrent_info()
         .def("files", &torrent_info::files, return_internal_reference<>())
         .def("orig_files", &torrent_info::orig_files, return_internal_reference<>())
 #if TORRENT_ABI_VERSION == 1
-        .def("file_at", &torrent_info::file_at)
-        .def("file_at_offset", &torrent_info::file_at_offset)
-#ifdef TORRENT_WINDOWS
-        .def("rename_file", rename_file1)
-#endif
+        .def("file_at", depr(&torrent_info::file_at))
 #endif // TORRENT_ABI_VERSION
 
         .def("is_valid", &torrent_info::is_valid)

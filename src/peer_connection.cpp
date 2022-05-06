@@ -67,6 +67,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/buffer.hpp"
 #include "libtorrent/aux_/array.hpp"
 #include "libtorrent/aux_/set_socket_buffer.hpp"
+#include "libtorrent/aux_/set_traffic_class.hpp"
 
 #if TORRENT_USE_ASSERTS
 #include <set>
@@ -346,23 +347,18 @@ namespace libtorrent {
 				disconnect(ec, operation_t::getname);
 				return;
 			}
-			if (is_v4(m_remote) && m_settings.get_int(settings_pack::peer_tos) != 0)
+			if (m_settings.get_int(settings_pack::peer_tos) != 0)
 			{
-				m_socket->set_option(type_of_service(char(m_settings.get_int(settings_pack::peer_tos))), ec);
+				int const value = m_settings.get_int(settings_pack::peer_tos);
+				aux::set_traffic_class(*m_socket, value, ec);
 #ifndef TORRENT_DISABLE_LOGGING
-				if (should_log(peer_log_alert::outgoing))
+				if (ec && should_log(peer_log_alert::outgoing))
 				{
-					peer_log(peer_log_alert::outgoing, "SET_TOS", "tos: %d e: %s"
-						, m_settings.get_int(settings_pack::peer_tos), ec.message().c_str());
+					peer_log(peer_log_alert::outgoing, "SET_DSCP", "value: %d e: %s"
+						, value, ec.message().c_str());
 				}
 #endif
 			}
-#if defined IPV6_TCLASS
-			else if (is_v6(m_remote) && m_settings.get_int(settings_pack::peer_tos) != 0)
-			{
-				m_socket->set_option(traffic_class(char(m_settings.get_int(settings_pack::peer_tos))), ec);
-			}
-#endif
 		}
 
 #ifndef TORRENT_DISABLE_LOGGING
@@ -780,6 +776,7 @@ namespace libtorrent {
 			m_num_pieces = t->torrent_file().num_pieces();
 			m_have_piece.set_all();
 		}
+
 #if TORRENT_USE_ASSERTS
 		TORRENT_ASSERT(!m_initialized);
 		m_initialized = true;
@@ -802,6 +799,7 @@ namespace libtorrent {
 
 			// if this is a web seed. we don't have a peer_info struct
 			t->set_seed(m_peer_info, true);
+			TORRENT_ASSERT(is_seed());
 			m_upload_only = true;
 
 			t->peer_has_all(this);
@@ -815,6 +813,8 @@ namespace libtorrent {
 			disconnect_if_redundant();
 			return;
 		}
+
+		TORRENT_ASSERT(!is_seed());
 
 		// if we're a seed, we don't keep track of piece availability
 		if (t->has_picker())
@@ -1750,9 +1750,10 @@ namespace libtorrent {
 		peer_log(peer_log_alert::incoming_message, "INTERESTED");
 #endif
 		if (m_peer_interested == false)
+		{
 			m_counters.inc_stats_counter(counters::num_peers_up_interested);
-
-		m_peer_interested = true;
+			m_peer_interested = true;
+		}
 		if (is_disconnecting()) return;
 
 		// if the peer is ready to download stuff, it must have metadata
@@ -1840,15 +1841,16 @@ namespace libtorrent {
 		}
 #endif
 
-		m_became_uninterested = aux::time_now();
-
 #ifndef TORRENT_DISABLE_LOGGING
 		peer_log(peer_log_alert::incoming_message, "NOT_INTERESTED");
 #endif
 		if (m_peer_interested)
+		{
 			m_counters.inc_stats_counter(counters::num_peers_up_interested, -1);
+			m_became_uninterested = aux::time_now();
+			m_peer_interested = false;
+		}
 
-		m_peer_interested = false;
 		if (is_disconnecting()) return;
 
 		std::shared_ptr<torrent> t = m_torrent.lock();
@@ -2006,12 +2008,14 @@ namespace libtorrent {
 				, static_cast<void*>(m_peer_info));
 #endif
 
+			TORRENT_ASSERT(t->ready_for_connections());
 			TORRENT_ASSERT(m_have_piece.all_set());
 			TORRENT_ASSERT(m_have_piece.count() == m_have_piece.size());
 			TORRENT_ASSERT(m_have_piece.size() == t->torrent_file().num_pieces());
 
 			t->seen_complete();
 			t->set_seed(m_peer_info, true);
+			TORRENT_ASSERT(is_seed());
 			m_upload_only = true;
 
 #if TORRENT_USE_INVARIANT_CHECKS
@@ -2106,10 +2110,11 @@ namespace libtorrent {
 			return;
 		}
 
-		bool was_seed = is_seed();
+		bool const was_seed = is_seed();
 		m_have_piece.clear_bit(index);
 		TORRENT_ASSERT(m_num_pieces > 0);
 		--m_num_pieces;
+		m_have_all = false;
 
 		// only update the piece_picker if
 		// we have the metadata and if
@@ -2120,7 +2125,10 @@ namespace libtorrent {
 		t->peer_lost(index, this);
 
 		if (was_seed)
+		{
 			t->set_seed(m_peer_info, false);
+			TORRENT_ASSERT(!is_seed());
+		}
 	}
 
 	// -----------------------------
@@ -2197,6 +2205,7 @@ namespace libtorrent {
 			m_have_piece = bits;
 			m_num_pieces = bits.count();
 			t->set_seed(m_peer_info, m_num_pieces == bits.size());
+			TORRENT_ASSERT(is_seed() == (m_num_pieces == bits.size()));
 
 #if TORRENT_USE_INVARIANT_CHECKS
 			if (t && t->has_picker())
@@ -2207,20 +2216,20 @@ namespace libtorrent {
 
 		TORRENT_ASSERT(t->valid_metadata());
 
-		int num_pieces = bits.count();
+		int const num_pieces = bits.count();
+		t->set_seed(m_peer_info, num_pieces == m_have_piece.size());
 		if (num_pieces == m_have_piece.size())
 		{
 #ifndef TORRENT_DISABLE_LOGGING
 			peer_log(peer_log_alert::info, "SEED", "this is a seed. p: %p"
 				, static_cast<void*>(m_peer_info));
 #endif
-
-			t->set_seed(m_peer_info, true);
 			m_upload_only = true;
 
 			m_have_piece.set_all();
 			m_num_pieces = num_pieces;
 			t->peer_has_all(this);
+			TORRENT_ASSERT(is_seed());
 
 			TORRENT_ASSERT(m_have_piece.all_set());
 			TORRENT_ASSERT(m_have_piece.count() == m_have_piece.size());
@@ -3374,9 +3383,12 @@ namespace libtorrent {
 
 		t->set_seed(m_peer_info, false);
 		m_bitfield_received = true;
+		m_have_all = false;
 
 		m_have_piece.clear_all();
 		m_num_pieces = 0;
+
+		TORRENT_ASSERT(!is_seed());
 
 		// if the peer is ready to download stuff, it must have metadata
 		m_has_metadata = true;
@@ -3832,8 +3844,11 @@ namespace libtorrent {
 		if (m_interesting) return;
 		std::shared_ptr<torrent> t = m_torrent.lock();
 		if (!t->ready_for_connections()) return;
-		m_interesting = true;
-		m_counters.inc_stats_counter(counters::num_peers_down_interested);
+		if (!m_interesting)
+		{
+			m_interesting = true;
+			m_counters.inc_stats_counter(counters::num_peers_down_interested);
+		}
 		write_interested();
 
 #ifndef TORRENT_DISABLE_LOGGING
@@ -3856,16 +3871,19 @@ namespace libtorrent {
 
 		std::shared_ptr<torrent> t = m_torrent.lock();
 		if (!t->ready_for_connections()) return;
-		m_interesting = false;
+		if (m_interesting)
+		{
+			m_interesting = false;
+			m_became_uninteresting = aux::time_now();
+			m_counters.inc_stats_counter(counters::num_peers_down_interested, -1);
+		}
+
 		m_slow_start = false;
-		m_counters.inc_stats_counter(counters::num_peers_down_interested, -1);
 
 		disconnect_if_redundant();
 		if (m_disconnecting) return;
 
 		write_not_interested();
-
-		m_became_uninteresting = aux::time_now();
 
 #ifndef TORRENT_DISABLE_LOGGING
 		if (should_log(peer_log_alert::outgoing_message))
@@ -4572,7 +4590,6 @@ namespace libtorrent {
 		p.flags = {};
 		get_specific_peer_info(p);
 
-		if (is_seed()) p.flags |= peer_info::seed;
 		if (m_snubbed) p.flags |= peer_info::snubbed;
 		if (m_upload_only) p.flags |= peer_info::upload_only;
 		if (m_endgame_mode) p.flags |= peer_info::endgame_mode;
@@ -4586,9 +4603,11 @@ namespace libtorrent {
 			p.num_hashfails = pi->hashfails;
 			if (pi->on_parole) p.flags |= peer_info::on_parole;
 			if (pi->optimistically_unchoked) p.flags |= peer_info::optimistic_unchoke;
+			if (pi->seed) p.flags |= peer_info::seed;
 		}
 		else
 		{
+			if (is_seed()) p.flags |= peer_info::seed;
 			p.source = {};
 			p.failcount = 0;
 			p.num_hashfails = 0;
@@ -4941,6 +4960,13 @@ namespace libtorrent {
 		time_duration const time_limit = seconds(
 			m_settings.get_int(settings_pack::inactivity_timeout));
 
+		// if we are close enough to the limit, consider the peer connection
+		// list full. This will enable the inactive timeout
+		bool const max_session_conns = m_ses.num_connections()
+			>= m_settings.get_int(settings_pack::connections_limit) - 5;
+		bool const max_torrent_conns = t && t->num_peers()
+			>= t->max_connections() - 5;
+
 		// don't bother disconnect peers we haven't been interested
 		// in (and that hasn't been interested in us) for a while
 		// unless we have used up all our connection slots
@@ -4949,8 +4975,7 @@ namespace libtorrent {
 			&& !m_peer_interested
 			&& d1 > time_limit
 			&& d2 > time_limit
-			&& (m_ses.num_connections() >= m_settings.get_int(settings_pack::connections_limit)
-				|| (t && t->num_peers() >= t->max_connections()))
+			&& (max_session_conns || max_torrent_conns)
 			&& can_disconnect(errors::timed_out_no_interest))
 		{
 #ifndef TORRENT_DISABLE_LOGGING
@@ -6160,32 +6185,18 @@ namespace libtorrent {
 			return;
 		}
 
-		if (is_v4(m_remote) && m_settings.get_int(settings_pack::peer_tos) != 0)
+		if (m_settings.get_int(settings_pack::peer_tos) != 0)
 		{
-			error_code err;
-			m_socket->set_option(type_of_service(char(m_settings.get_int(settings_pack::peer_tos))), err);
+			int const tos = m_settings.get_int(settings_pack::peer_tos);
+			aux::set_traffic_class(*m_socket, tos, ec);
 #ifndef TORRENT_DISABLE_LOGGING
-			if (should_log(peer_log_alert::outgoing))
+			if (ec && should_log(peer_log_alert::outgoing))
 			{
 				peer_log(peer_log_alert::outgoing, "SET_TOS", "tos: %d e: %s"
-					, m_settings.get_int(settings_pack::peer_tos), err.message().c_str());
+					, tos, ec.message().c_str());
 			}
 #endif
 		}
-#if defined IPV6_TCLASS
-		else if (is_v6(m_remote) && m_settings.get_int(settings_pack::peer_tos) != 0)
-		{
-			error_code err;
-			m_socket->set_option(traffic_class(char(m_settings.get_int(settings_pack::peer_tos))), err);
-#ifndef TORRENT_DISABLE_LOGGING
-			if (should_log(peer_log_alert::outgoing))
-			{
-				peer_log(peer_log_alert::outgoing, "SET_TOS", "tos: %d e: %s"
-					, m_settings.get_int(settings_pack::peer_tos), err.message().c_str());
-			}
-#endif
-		}
-#endif
 
 #ifndef TORRENT_DISABLE_EXTENSIONS
 		for (auto const& ext : m_extensions)
@@ -6604,6 +6615,7 @@ namespace libtorrent {
 	bool peer_connection::is_seed() const
 	{
 		TORRENT_ASSERT(is_single_thread());
+
 		// if m_num_pieces == 0, we probably don't have the
 		// metadata yet.
 		std::shared_ptr<torrent> t = m_torrent.lock();
@@ -6627,11 +6639,9 @@ namespace libtorrent {
 		TORRENT_ASSERT(is_single_thread());
 		// if the peer is a seed, don't allow setting
 		// upload_only to false
-		if (m_upload_only || is_seed()) return;
+		if (m_upload_only && is_seed()) return;
 
 		m_upload_only = u;
-		std::shared_ptr<torrent> t = associated_torrent().lock();
-		t->set_seed(m_peer_info, u);
 		disconnect_if_redundant();
 	}
 

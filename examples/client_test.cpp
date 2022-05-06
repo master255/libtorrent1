@@ -235,7 +235,7 @@ bool is_absolute_path(std::string const& f)
 #if defined(TORRENT_WINDOWS) || defined(TORRENT_OS2)
 	int i = 0;
 	// match the xx:\ or xx:/ form
-	while (f[i] && strchr("abcdefghijklmnopqrstuvxyz", f[i])) ++i;
+	while (f[i] && strchr("abcdefghijklmnopqrstuvxyzABCDEFGHIJKLMNOPQRSTUVXYZ", f[i])) ++i;
 	if (i < int(f.size()-1) && f[i] == ':' && (f[i+1] == '\\' || f[i+1] == '/'))
 		return true;
 
@@ -315,7 +315,7 @@ int print_peer_info(std::string& out
 	int pos = 0;
 	if (print_ip) out += "IP                             ";
 	if (print_local_ip) out += "local IP                       ";
-	out += "progress        down     (total | peak   )  up      (total | peak   ) sent-req tmo bsy rcv flags         dn  up  source  ";
+	out += "progress        down     (total | peak   )  up      (total | peak   ) sent-req tmo bsy rcv flags          dn  up  source  ";
 	if (print_fails) out += "fail hshf ";
 	if (print_send_bufs) out += "rq sndb (recvb |alloc | wmrk ) q-bytes ";
 	if (print_timers) out += "inactive wait timeout q-time ";
@@ -357,7 +357,7 @@ int print_peer_info(std::string& out
 		char peer_progress[10];
 		std::snprintf(peer_progress, sizeof(peer_progress), "%.1f%%", i->progress_ppm / 10000.f);
 		std::snprintf(str, sizeof(str)
-			, "%s %s%s (%s|%s) %s%s (%s|%s) %s%7s %4d%4d%4d %s%s%s%s%s%s%s%s%s%s%s%s%s %s%s%s %s%s%s %s%s%s%s%s%s "
+			, "%s %s%s (%s|%s) %s%s (%s|%s) %s%7s %4d%4d%4d %s%s%s%s%s%s%s%s%s%s%s%s%s%s %s%s%s %s%s%s %s%s%s%s%s%s "
 			, progress_bar(i->progress_ppm / 1000, 15, col_green, '#', '-', peer_progress).c_str()
 			, esc("32"), add_suffix(i->down_speed, "/s").c_str()
 			, add_suffix(i->total_download).c_str(), add_suffix(i->download_rate_peak, "/s").c_str()
@@ -382,6 +382,7 @@ int print_peer_info(std::string& out
 			, color("e", (i->flags & peer_info::endgame_mode)?col_white:col_blue).c_str()
 			, color("E", (i->flags & peer_info::rc4_encrypted)?col_white:(i->flags & peer_info::plaintext_encrypted)?col_cyan:col_blue).c_str()
 			, color("h", (i->flags & peer_info::holepunched)?col_white:col_blue).c_str()
+			, color("s", (i->flags & peer_info::seed)?col_white:col_blue).c_str()
 
 			, color("d", (i->read_state & peer_info::bw_disk)?col_white:col_blue).c_str()
 			, color("l", (i->read_state & peer_info::bw_limit)?col_white:col_blue).c_str()
@@ -1383,8 +1384,8 @@ examples:
 			, [](lt::string_view p) { return p.size() > 7 && p.substr(p.size() - 7) == ".resume"; }, ec);
 		if (ec)
 		{
-		std::fprintf(stderr, "failed to list resume directory \"%s\": (%s : %d) %s\n"
-			, resume_dir.c_str(), ec.category().name(), ec.value(), ec.message().c_str());
+			std::fprintf(stderr, "failed to list resume directory \"%s\": (%s : %d) %s\n"
+				, resume_dir.c_str(), ec.category().name(), ec.value(), ec.message().c_str());
 		}
 		else
 		{

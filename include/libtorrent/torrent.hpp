@@ -266,7 +266,7 @@ namespace libtorrent {
 		bool m_upload_mode:1;
 
 		// this is set to false as long as the connections
-		// of this torrent hasn't been initialized. If we
+		// of this torrent haven't been initialized. If we
 		// have metadata from the start, connections are
 		// initialized immediately, if we didn't have metadata,
 		// they are initialized right after files_checked().
@@ -538,7 +538,7 @@ namespace libtorrent {
 
 		time_point32 started() const { return m_started; }
 		void step_session_time(int seconds);
-		void do_pause(pause_flags_t flags = torrent_handle::clear_disk_cache);
+		void do_pause(pause_flags_t flags = torrent_handle::clear_disk_cache, bool was_paused = false);
 		void do_resume();
 
 		seconds32 finished_time() const;
@@ -1199,6 +1199,7 @@ namespace libtorrent {
 
 	private:
 
+		void update_tracker_endpoints();
 		void on_exception(std::exception const& e) override;
 		void on_error(error_code const& ec) override;
 
@@ -1439,17 +1440,12 @@ namespace libtorrent {
 		// bias towards keeping seeding torrents that
 		// recently was started, to avoid oscillation
 		// this is specified at a second granularity
-		// in session-time. see session_impl for details.
-		// the reference point is stepped forward every 4
-		// hours to keep the timestamps fit in 16 bits
 		time_point32 m_started = aux::time_now32();
 
-		// if we're a seed, this is the session time
-		// timestamp of when we became one
+		// if we're a seed, this is the timestamp of when we became one
 		time_point32 m_became_seed = aux::time_now32();
 
-		// if we're finished, this is the session time
-		// timestamp of when we finished
+		// if we're finished, this is the timestamp of when we finished
 		time_point32 m_became_finished = aux::time_now32();
 
 		// when checking, this is the first piece we have not
@@ -1513,8 +1509,8 @@ namespace libtorrent {
 		// 8 bits after each one
 		// ==============================
 
-		// the session time timestamp of when we entered upload mode
-		// if we're currently in upload-mode
+		// if we're currently in upload-mode this is the time timestamp of when
+		// we entered it
 		time_point32 m_upload_mode_time = aux::time_now32();
 
 		// true when this torrent should announce to

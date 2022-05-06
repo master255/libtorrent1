@@ -4,6 +4,7 @@ from distutils import log
 import distutils.debug
 import distutils.sysconfig
 import multiprocessing
+import distutils.util
 import os
 import pathlib
 import platform
@@ -18,19 +19,6 @@ import shlex
 
 import setuptools
 import setuptools.command.build_ext as _build_ext_lib
-
-
-def get_msvc_toolset():
-    # Reference: https://wiki.python.org/moin/WindowsCompilers
-    major_minor = sys.version_info[0:2]
-    if major_minor in ((2, 6), (2, 7), (3, 0), (3, 1), (3, 2)):
-        return "msvc-9.0"
-    if major_minor in ((3, 3), (3, 4)):
-        return "msvc-10.0"
-    if major_minor in ((3, 5), (3, 6)):
-        return "msvc-14.1"  # libtorrent requires VS 2017 or newer
-    # unknown python version
-    return "msvc"
 
 
 def b2_bool(value):
@@ -231,7 +219,7 @@ class LibtorrentBuildExt(BuildExtBase):
             with open('compile_flags') as f:
                 opts = f.read()
                 if '-std=c++' in opts:
-                    self.cxxflags = '-std=c++' + opts.split('-std=c++')[-1].split()[0]
+                    self.cxxflags = ['-std=c++' + opts.split('-std=c++')[-1].split()[0]]
         except:
             pass
 
@@ -246,10 +234,7 @@ class LibtorrentBuildExt(BuildExtBase):
         except:
             pass
 
-        if os.name == "nt":
-            self.toolset = get_msvc_toolset()
-        else:
-            self.toolset = None
+        self.toolset = None
         self.libtorrent_link = None
         self.boost_link = None
         self.pic = None
@@ -352,8 +337,13 @@ class LibtorrentBuildExt(BuildExtBase):
         python_binding_dir = pathlib.Path(__file__).parent.absolute()
         with self._configure_b2(python_binding_dir):
             if self.linkflags:
-                for f in self.linkflags:
-                    self._b2_args_split.append("linkflags=" + f)
+                for lf in self.linkflags:
+                    # since b2 may be running with a different directory as cwd,
+                    # relative
+                    # paths need to be converted to absolute
+                    if lf[2] != '/':
+                        lf = '-L' + str(pathlib.Path(lf[2:]).absolute())
+                    self._b2_args_split.append("linkflags=" + lf)
             if self.cxxflags:
                 for f in self.cxxflags:
                     self._b2_args_split.append("cxxflags=" + f)
@@ -374,11 +364,11 @@ class LibtorrentBuildExt(BuildExtBase):
     def _configure_b2_with_distutils(self, python_binding_dir):
         if os.name == "nt":
             self._maybe_add_arg("--abbreviate-paths")
-            self._maybe_add_arg("boost-link=static")
-            self._maybe_add_arg("libtorrent-link=static")
-        else:
-            self._maybe_add_arg("boost-link=shared")
-            self._maybe_add_arg("libtorrent-link=prebuilt")
+
+        self._maybe_add_arg("boost-link=static")
+        self._maybe_add_arg("libtorrent-link=static")
+
+        self._maybe_add_arg("crypto=openssl")
 
         if distutils.debug.DEBUG:
             self._maybe_add_arg("--debug-configuration")
@@ -392,6 +382,24 @@ class LibtorrentBuildExt(BuildExtBase):
         self._maybe_add_arg(f"variant={variant}")
         bits = 64 if sys.maxsize > 2 ** 32 else 32
         self._maybe_add_arg(f"address-model={bits}")
+
+        # Cross-compiling logic: tricky, because autodetection is usually
+        # better than our matching
+        if sys.platform == "darwin":
+            # macOS uses multi-arch binaries. Attempt to match the
+            # configuration of the running python by translating distutils
+            # platform modes to b2 architecture modes
+            machine = distutils.util.get_platform().split("-")[-1]
+            if machine == "arm64":
+                self._maybe_add_arg("architecture=arm")
+            elif machine in ("ppc", "ppc64"):
+                self._maybe_add_arg("architecture=power")
+            elif machine in ("i386", "x86_64", "intel"):
+                self._maybe_add_arg("architecture=x86")
+            elif machine in ("universal", "fat", "fat3", "fat64"):
+                self._maybe_add_arg("architecture=combined")
+            # NB: as of boost 1.75.0, b2 doesn't have a straightforward way to
+            # build a "universal2" (arm64 + x86_64) binary
 
         if self.parallel:
             self._maybe_add_arg(f"-j{self.parallel}")
@@ -443,8 +451,8 @@ class LibtorrentBuildExt(BuildExtBase):
 
 
 setuptools.setup(
-    name="python-libtorrent",
-    version="1.2.13",
+    name="libtorrent",
+    version="1.2.16",
     author="Arvid Norberg",
     author_email="arvid@libtorrent.org",
     description="Python bindings for libtorrent-rasterbar",

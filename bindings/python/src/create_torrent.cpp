@@ -8,6 +8,7 @@
 #include "libtorrent/torrent_info.hpp"
 #include <libtorrent/version.hpp>
 #include "bytes.hpp"
+#include "gil.hpp"
 
 using namespace boost::python;
 using namespace lt;
@@ -60,7 +61,8 @@ namespace
 #if TORRENT_ABI_VERSION == 1
     void add_file_deprecated(file_storage& ct, file_entry const& fe)
     {
-       ct.add_file(fe);
+        python_deprecated("this overload of add_file() is deprecated");
+        ct.add_file(fe);
     }
 
     struct FileIter
@@ -96,18 +98,13 @@ namespace
     };
 
     FileIter begin_files(file_storage const& self)
-    { return FileIter(self, file_index_t(0)); }
+    {
+        python_deprecated("__iter__ is deprecated");
+        return FileIter(self, file_index_t(0));
+    }
 
     FileIter end_files(file_storage const& self)
     { return FileIter(self, self.end_file()); }
-
-#ifdef TORRENT_WINDOWS
-    void add_file_wstring(file_storage& fs, std::wstring const& file, std::int64_t size
-       , file_flags_t const flags, std::time_t md, std::string link)
-    {
-       fs.add_file(file, size, flags, md, link);
-    }
-#endif
 #endif // TORRENT_ABI_VERSION
 
     void add_files_callback(file_storage& fs, std::string const& file
@@ -135,12 +132,6 @@ void bind_create_torrent()
 {
     void (file_storage::*set_name0)(std::string const&) = &file_storage::set_name;
     void (file_storage::*rename_file0)(file_index_t, std::string const&) = &file_storage::rename_file;
-#if TORRENT_ABI_VERSION == 1
-#ifdef TORRENT_WINDOWS
-    void (file_storage::*set_name1)(std::wstring const&) = &file_storage::set_name;
-    void (file_storage::*rename_file1)(file_index_t, std::wstring const&) = &file_storage::rename_file;
-#endif
-#endif
 
 #ifndef BOOST_NO_EXCEPTIONS
     void (*set_piece_hashes0)(create_torrent&, std::string const&) = &set_piece_hashes;
@@ -166,13 +157,10 @@ void bind_create_torrent()
         .def("add_file", add_file, (arg("path"), arg("size"), arg("flags") = 0, arg("mtime") = 0, arg("linkpath") = ""))
         .def("num_files", &file_storage::num_files)
 #if TORRENT_ABI_VERSION == 1
-        .def("at", at)
+        .def("at", depr(at))
         .def("add_file", add_file_deprecated, arg("entry"))
         .def("__iter__", boost::python::range(&begin_files, &end_files))
-        .def("__len__", &file_storage::num_files)
-#ifdef TORRENT_WINDOWS
-        .def("add_file", add_file_wstring, (arg("path"), arg("size"), arg("flags") = 0, arg("mtime") = 0, arg("linkpath") = ""))
-#endif
+        .def("__len__", depr(&file_storage::num_files))
 #endif // TORRENT_ABI_VERSION
         .def("hash", file_storage_hash)
         .def("symlink", file_storage_symlink, return_value_policy<copy_const_reference>())
@@ -190,12 +178,6 @@ void bind_create_torrent()
         .def("piece_size", &file_storage::piece_size)
         .def("set_name", set_name0)
         .def("rename_file", rename_file0)
-#if TORRENT_ABI_VERSION == 1
-#ifdef TORRENT_WINDOWS
-        .def("set_name", set_name1)
-        .def("rename_file", rename_file1)
-#endif
-#endif
         .def("name", &file_storage::name, return_value_policy<copy_const_reference>())
         ;
 

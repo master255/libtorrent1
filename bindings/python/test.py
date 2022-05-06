@@ -17,6 +17,10 @@ import threading
 import tempfile
 import socket
 import select
+import logging
+import ssl
+import http.server
+import functools
 
 import dummy_data
 
@@ -29,6 +33,10 @@ settings = {
     'alert_mask': lt.alert.category_t.all_categories,
     'enable_dht': False, 'enable_lsd': False, 'enable_natpmp': False,
     'enable_upnp': False, 'listen_interfaces': '0.0.0.0:0', 'file_pool_size': 1}
+
+
+def has_deprecated():
+    return hasattr(lt, 'version')
 
 
 class test_create_torrent(unittest.TestCase):
@@ -50,6 +58,8 @@ class test_create_torrent(unittest.TestCase):
         fs = lt.file_storage()
         fs.add_file('test/file1', 1000)
         fs.add_file('test/file2', 2000)
+        self.assertEqual(fs.file_name(0), 'file1')
+        self.assertEqual(fs.file_name(1), 'file2')
         ct = lt.create_torrent(fs)
         ct.add_url_seed('foo')
         ct.add_http_seed('bar')
@@ -57,7 +67,15 @@ class test_create_torrent(unittest.TestCase):
         ct.set_root_cert('1234567890')
         ct.add_collection('1337')
         entry = ct.generate()
-        print(entry)
+        encoded = lt.bencode(entry)
+        print(encoded)
+
+        # zero out the creation date:
+        encoded = encoded.split(b'13:creation datei', 1)
+        encoded[1] = b'0e' + encoded[1].split(b'e', 1)[1]
+        encoded = b'13:creation datei'.join(encoded)
+
+        self.assertEqual(encoded, b'd8:announce3:bar13:creation datei0e9:httpseeds3:bar4:infod11:collectionsl4:1337e5:filesld6:lengthi2000e4:pathl5:file2eed6:lengthi1000e4:pathl5:file1eee4:name4:test12:piece lengthi16384e6:pieces20:\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x008:ssl-cert10:1234567890e8:url-list3:fooe')
 
 
 class test_session_stats(unittest.TestCase):
@@ -68,6 +86,15 @@ class test_session_stats(unittest.TestCase):
         for field_name in dir(atp):
             field = getattr(atp, field_name)
             print(field_name, field)
+
+        atp.renamed_files = {}
+        atp.merkle_tree = []
+        atp.unfinished_pieces = {}
+        atp.have_pieces = []
+        atp.banned_peers = []
+        atp.verified_pieces = []
+        atp.piece_priorities = []
+        atp.url_seeds = []
 
     def test_unique(self):
         metrics = lt.session_stats_metrics()
@@ -171,6 +198,7 @@ class test_torrent_handle(unittest.TestCase):
             tracker.tier = idx
             tracker.fail_limit = 2
             trackers.append(tracker)
+            self.assertEqual(tracker.url, tracker_url)
         self.h.replace_trackers(trackers)
         new_trackers = self.h.trackers()
         self.assertEqual(new_trackers[0]['url'], 'udp://tracker1.com')
@@ -363,6 +391,8 @@ class TestAddPiece(unittest.TestCase):
 class test_torrent_info(unittest.TestCase):
 
     def test_bencoded_constructor(self):
+        # things that can be converted to a bencoded entry, will be interpreted
+        # as such and encoded
         info = lt.torrent_info({'info': {
             'name': 'test_torrent', 'length': 1234,
             'piece length': 16 * 1024,
@@ -376,6 +406,22 @@ class test_torrent_info(unittest.TestCase):
         self.assertEqual(f.file_size(0), 1234)
         self.assertEqual(info.total_size(), 1234)
         self.assertEqual(info.creation_date(), 0)
+
+    def test_bytearray(self):
+        # a bytearray object is interpreted as a bencoded buffer
+        info = lt.torrent_info(bytearray(lt.bencode({'info': {
+            'name': 'test_torrent', 'length': 1234,
+            'piece length': 16 * 1024,
+            'pieces': 'aaaaaaaaaaaaaaaaaaaa'}})))
+        self.assertEqual(info.num_files(), 1)
+
+    def test_bytes(self):
+        # a bytes object is interpreted as a bencoded buffer
+        info = lt.torrent_info(bytes(lt.bencode({'info': {
+            'name': 'test_torrent', 'length': 1234,
+            'piece length': 16 * 1024,
+            'pieces': 'aaaaaaaaaaaaaaaaaaaa'}})))
+        self.assertEqual(info.num_files(), 1)
 
     def test_load_decode_depth_limit(self):
         self.assertRaises(RuntimeError, lambda: lt.torrent_info(
@@ -404,6 +450,12 @@ class test_torrent_info(unittest.TestCase):
         self.assertTrue(len(ti.metadata()) != 0)
         self.assertTrue(len(ti.hash_for_piece(0)) != 0)
 
+    def test_torrent_info_bytes_overload(self):
+        # bytes will never be interpreted as a file name. It's interpreted as a
+        # bencoded buffer
+        with self.assertRaises(RuntimeError):
+            ti = lt.torrent_info(b'base.torrent')
+
     def test_web_seeds(self):
         ti = lt.torrent_info('base.torrent')
 
@@ -424,6 +476,41 @@ class test_torrent_info(unittest.TestCase):
         self.assertEqual(ae.verified, False)
         self.assertEqual(ae.source, 0)
 
+    def test_torrent_info_sha1_hash_overload(self):
+        ti = lt.torrent_info(lt.sha1_hash('a' * 20))
+        self.assertEqual(ti.info_hash(), lt.sha1_hash('a' * 20))
+
+        ti_copy = lt.torrent_info(ti)
+        self.assertEqual(ti_copy.info_hash(), lt.sha1_hash('a' * 20))
+
+    def test_url_seed(self):
+        ti = lt.torrent_info('base.torrent')
+
+        ti.add_tracker('foobar1')
+        ti.add_url_seed('foobar2')
+        ti.add_url_seed('foobar3', 'username:password')
+        ti.add_url_seed('foobar4', 'username:password', [])
+
+        seeds = ti.web_seeds()
+        self.assertEqual(seeds, [
+            {'url': 'foobar2', 'type': 0, 'auth': ''},
+            {'url': 'foobar3', 'type': 0, 'auth': 'username:password'},
+            {'url': 'foobar4', 'type': 0, 'auth': 'username:password'},
+        ])
+
+    def test_http_seed(self):
+        ti = lt.torrent_info('base.torrent')
+
+        ti.add_http_seed('foobar2')
+        ti.add_http_seed('foobar3', 'username:password')
+        ti.add_http_seed('foobar4', 'username:password', [])
+
+        seeds = ti.web_seeds()
+        self.assertEqual(seeds, [
+            {'url': 'foobar2', 'type': 1, 'auth': ''},
+            {'url': 'foobar3', 'type': 1, 'auth': 'username:password'},
+            {'url': 'foobar4', 'type': 1, 'auth': 'username:password'},
+        ])
 
 class test_alerts(unittest.TestCase):
 
@@ -518,16 +605,40 @@ class test_alerts(unittest.TestCase):
 class test_bencoder(unittest.TestCase):
 
     def test_bencode(self):
-
         encoded = lt.bencode({'a': 1, 'b': [1, 2, 3], 'c': 'foo'})
         self.assertEqual(encoded, b'd1:ai1e1:bli1ei2ei3ee1:c3:fooe')
 
     def test_bdecode(self):
-
         encoded = b'd1:ai1e1:bli1ei2ei3ee1:c3:fooe'
         decoded = lt.bdecode(encoded)
         self.assertEqual(decoded, {b'a': 1, b'b': [1, 2, 3], b'c': b'foo'})
 
+    def test_string(self):
+        encoded = lt.bencode('foo\u00e5\u00e4\u00f6')
+        self.assertEqual(encoded, b'9:foo\xc3\xa5\xc3\xa4\xc3\xb6')
+
+    def test_bytes(self):
+        encoded = lt.bencode(b'foo')
+        self.assertEqual(encoded, b'3:foo')
+
+    def test_float(self):
+        # TODO: this should throw a TypeError in the future
+        with self.assertWarns(DeprecationWarning):
+            encoded = lt.bencode(1.337)
+            self.assertEqual(encoded, b'0:')
+
+    def test_object(self):
+        class FooBar:
+            dummy = 1
+
+        # TODO: this should throw a TypeError in the future
+        with self.assertWarns(DeprecationWarning):
+            encoded = lt.bencode(FooBar())
+            self.assertEqual(encoded, b'0:')
+
+    def test_preformatted(self):
+        encoded = lt.bencode((1, 2, 3, 4, 5))
+        self.assertEqual(encoded, b'\x01\x02\x03\x04\x05')
 
 class test_sha1hash(unittest.TestCase):
 
@@ -611,6 +722,19 @@ class test_peer_class(unittest.TestCase):
         s.set_peer_class_type_filter(lt.peer_class_type_filter())
         s.set_peer_class_filter(lt.ip_filter())
 
+class test_ip_filter(unittest.TestCase):
+
+    def test_export(self):
+
+        f = lt.ip_filter()
+        self.assertEqual(f.access('1.1.1.1'), 0)
+        f.add_rule('1.1.1.1', '1.1.1.2', 1)
+        self.assertEqual(f.access('1.1.1.0'), 0)
+        self.assertEqual(f.access('1.1.1.1'), 1)
+        self.assertEqual(f.access('1.1.1.2'), 1)
+        self.assertEqual(f.access('1.1.1.3'), 0)
+        exp = f.export_filter()
+        self.assertEqual(exp, ([('0.0.0.0', '1.1.1.0'), ('1.1.1.1', '1.1.1.2'), ('1.1.1.3', '255.255.255.255')], [('::', 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff')]))
 
 class test_session(unittest.TestCase):
 
@@ -629,6 +753,20 @@ class test_session(unittest.TestCase):
                        'peers': [('5.6.7.8', 6881)],
                        'banned_peers': [('8.7.6.5', 6881)],
                        'file_priorities': [1, 1, 1, 2, 0]})
+
+    def test_session_status(self):
+        if not has_deprecated():
+            return
+
+        s = lt.session()
+        st = s.status()
+        print(st)
+        print(st.active_requests)
+        print(st.dht_nodes)
+        print(st.dht_node_cache)
+        print(st.dht_torrents)
+        print(st.dht_global_nodes)
+        print(st.dht_total_allocations)
 
     def test_apply_settings(self):
 
@@ -691,6 +829,7 @@ class test_session(unittest.TestCase):
         min_mem = lt.min_memory_usage()
         print(min_mem)
 
+        self.assertTrue('allow_idna' not in min_mem)
         self.assertTrue('connection_speed' in min_mem)
         self.assertTrue('file_pool_size' in min_mem)
 
@@ -860,12 +999,175 @@ class test_dht_settings(unittest.TestCase):
         print(ds.item_lifetime)
 
 
+def get_isolated_settings():
+    return {
+        "enable_dht": False,
+        "enable_lsd": False,
+        "enable_natpmp": False,
+        "enable_upnp": False,
+        "listen_interfaces": "127.0.0.1:0",
+        "dht_bootstrap_nodes": "",
+    }
+
+
+def loop_until_timeout(timeout, msg="condition"):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        yield
+    raise AssertionError(f"{msg} timed out")
+
+
+def unlink_all_files(path):
+    for dirpath, _, filenames in os.walk(path):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+            os.unlink(filepath)
+
+
+# In test cases where libtorrent writes torrent data in a temporary directory,
+# cleaning up the tempdir on Windows CI sometimes fails with a PermissionError
+# having WinError 5 (Access Denied). I can't repro this WinError in any way;
+# holding an open file handle results in a different WinError. Seems to be a
+# race condition which only happens with very short-lived tests which write
+# data. Work around by cleaning up the tempdir in a loop.
+
+# TODO: why is this necessary?
+def cleanup_with_windows_fix(tempdir, *, timeout):
+    # Clean up just the files, so we don't have to bother with depth-first
+    # traversal
+    for _ in loop_until_timeout(timeout, msg="PermissionError clear"):
+        try:
+            unlink_all_files(tempdir.name)
+        except PermissionError:
+            if sys.platform == "win32":
+                # current release of mypy doesn't know about winerror
+                # if exc.winerror == 5:
+                continue
+            raise
+        break
+    # This removes directories in depth-first traversal.
+    # It also marks the tempdir as explicitly cleaned so it doesn't trigger a
+    # ResourceWarning.
+    tempdir.cleanup()
+
+
+def wait_for(session, alert_type, *, timeout, prefix=None):
+    # Return the first alert of type, but log all alerts.
+    result = None
+    for _ in loop_until_timeout(timeout, msg=alert_type.__name__):
+        for alert in session.pop_alerts():
+            print(f"{alert.what()}: {alert.message()}")
+            if result is None and isinstance(alert, alert_type):
+                result = alert
+        if result is not None:
+            return result
+    raise AssertionError("unreachable")
+
+
+class LambdaRequestHandler(http.server.BaseHTTPRequestHandler):
+    default_request_version = "HTTP/1.1"
+
+    def __init__(self, get_data, *args, **kwargs):
+        self.get_data = get_data
+        super().__init__(*args, **kwargs)
+
+    def do_GET(self):
+        print(f"mock tracker request: {self.requestline}")
+        data = self.get_data()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+class SSLTrackerAlertTest(unittest.TestCase):
+
+    def setUp(self):
+        self.cert_path = os.path.realpath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "test", "ssl", "server.pem"
+        ))
+        print(f"cert_path = {self.cert_path}")
+
+        self.tracker_response = {
+            b"external ip": b"\x01\x02\x03\x04",
+        }
+        self.tracker = http.server.HTTPServer(
+            ("127.0.0.1", 0),
+            functools.partial(
+                LambdaRequestHandler, lambda: lt.bencode(self.tracker_response)
+            ),
+        )
+        self.ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        self.ctx.load_cert_chain(self.cert_path)
+        self.tracker.socket = self.ctx.wrap_socket(
+            self.tracker.socket, server_side=True
+        )
+        self.tracker_thread = threading.Thread(target=self.tracker.serve_forever)
+        self.tracker_thread.start()
+        # HTTPServer.server_name seems to resolve to things like
+        # "localhost.localdomain"
+        port = self.tracker.server_port
+        self.tracker_url = f"https://127.0.0.1:{port}/announce"
+        print(f"mock tracker url = {self.tracker_url}")
+
+        self.settings = get_isolated_settings()
+        self.settings["alert_mask"] = lt.alert_category.status
+        # I couldn't get validation to work on all platforms. Setting
+        # SSL_CERT_FILE to our self-signed cert works on linux and mac, but
+        # not on Windows.
+        self.settings["validate_https_trackers"] = False
+        self.session = lt.session(self.settings)
+        self.dir = tempfile.TemporaryDirectory()
+        self.atp = lt.add_torrent_params()
+        self.atp.info_hash = dummy_data.get_sha1_hash()
+        self.atp.flags &= ~lt.torrent_flags.auto_managed
+        self.atp.flags &= ~lt.torrent_flags.paused
+        self.atp.save_path = self.dir.name
+
+    def tearDown(self):
+        # we do this because sessions writing data can collide with
+        # cleaning up temporary directories. session.abort() isn't bound
+        handles = self.session.get_torrents()
+        for handle in handles:
+            self.session.remove_torrent(handle)
+        for _ in loop_until_timeout(5, msg="clear all handles"):
+            if not any(handle.is_valid() for handle in handles):
+                break
+        cleanup_with_windows_fix(self.dir, timeout=5)
+        self.tracker.shutdown()
+        # Explicitly clean up server sockets, to avoid ResourceWarning
+        self.tracker.server_close()
+
+    def test_external_ip_alert_via_ssl_tracker(self):
+        handle = self.session.add_torrent(self.atp)
+        handle.add_tracker({"url": self.tracker_url})
+
+        alert = wait_for(self.session, lt.external_ip_alert, timeout=60)
+
+        self.assertEqual(alert.category(), lt.alert_category.status)
+        self.assertEqual(alert.what(), "external_ip")
+        self.assertIsInstance(alert.message(), str)
+        self.assertNotEqual(alert.message(), "")
+        self.assertEqual(str(alert), alert.message())
+        self.assertEqual(alert.external_address, "1.2.3.4")
+
+
 if __name__ == '__main__':
     print(lt.__version__)
-    shutil.copy(os.path.join('..', '..', 'test', 'test_torrents',
-                             'url_seed_multi.torrent'), '.')
-    shutil.copy(os.path.join('..', '..', 'test', 'test_torrents',
-                             'base.torrent'), '.')
-    shutil.copy(os.path.join('..', '..', 'test', 'test_torrents',
-                             'unordered.torrent'), '.')
+    try:
+        shutil.copy(os.path.join('..', '..', 'test', 'test_torrents',
+                                 'url_seed_multi.torrent'), '.')
+    except shutil.SameFileError:
+        pass
+    try:
+        shutil.copy(os.path.join('..', '..', 'test', 'test_torrents',
+                                 'base.torrent'), '.')
+    except shutil.SameFileError:
+        pass
+    try:
+        shutil.copy(os.path.join('..', '..', 'test', 'test_torrents',
+                                 'unordered.torrent'), '.')
+    except shutil.SameFileError:
+        pass
     unittest.main()

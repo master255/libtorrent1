@@ -1,5 +1,44 @@
+	* rename peer_tos setting to peer_dscp
+	* fix bdecode support for large strings (>= 100 MB)
+
+1.2.16 released
+
+	* send User-Agent field in anonymous mode
+	* fix python binding for settings_pack conversion
+	* fix DHT announce timer issue
+	* use DSCP_TRAFFIC_TYPE socket option on windows
+	* update default ToS setting according to RFC 8622
+	* keep trying to announce to trackers even when all fail
+	* don't disable announcing from local endpoints because of temporary failures
+	* fix issue in parsing UPnP XML response with multiple forwarding services
+
+1.2.15 released
+
+	* cache DNS lookups for SOCKS5 proxy
+	* fix stalled pieces on disk-full errors
+	* fix build configuration issue on NetBSD, OpenBSD and DragonFly
+	* make UTF-8 sanitization a bit stricter. This will re-write invalid UTF-8
+	  code points encoding surrogate pairs
+	* fix restoring last_seen_complete from resume data
+	* fix issue on MacOS where the DHT was not restarted on a network-up notification
+	* make remove_torrent flags be treated as flags (instead of an enum)
+
+1.2.14 released
+
+	* improve handling of seed flag in PEX messages
+	* fix issue of accruing unlimited DHT node candidates when DHT is disabled
+	* fix bug in parsing chunked encoding
+	* fix incorrect reporting of active_duration when entering graceful-pause
+	* fix python binding for functions taking string_view
+	* fix python binding for torrent_info constructor overloads
+	* issue python deprecation warnings for some deprecated functions in the python bindings
+	* fix python binding for torrent_info::add_url_seed, add_tracker and add_http_seed
+
 1.2.13 released
 
+	* Use /etc/ssl/cert.pem to validate HTTPS connections on MacOS
+	* allow no-interest timeouts of peer connections before all connections slots are full
+	* fix issue where a DHT message would count as an incoming connection
 	* fix issue when failing to parse outgoing_interfaces setting
 	* fix super-seeding issue that could cause a segfault
 	* fix data race in python binding of session::get_torrent_status()

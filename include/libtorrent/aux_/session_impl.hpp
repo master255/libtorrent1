@@ -809,7 +809,7 @@ namespace aux {
 			void update_dht_upload_rate_limit();
 			void update_proxy();
 			void update_i2p_bridge();
-			void update_peer_tos();
+			void update_peer_dscp();
 			void update_user_agent();
 			void update_unchoke_limit();
 			void update_connection_speed();
@@ -1356,7 +1356,7 @@ namespace aux {
 			// message in-flight at any given time.
 			bool m_pending_auto_manage = false;
 
-			// this is also set to true when triggering an auto-manage
+			// this is set to true when triggering an auto-manage
 			// of the torrents. However, if the normal auto-manage
 			// timer comes along and executes the auto-management,
 			// this is set to false, which means the triggered event
