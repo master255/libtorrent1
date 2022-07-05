@@ -370,6 +370,14 @@ namespace libtorrent {
 #endif
 	}
 
+    void torrent_handle::set_dht_data(
+            std::string const& dht_public_key
+            , std::string const& dht_salt
+            , std::string const& dht_trackers)
+    {
+        async_call(&torrent::set_dht_data, dht_public_key, dht_salt, dht_trackers);
+    }
+
 	void torrent_handle::save_resume_data(resume_data_flags_t f) const
 	{
 		async_call(&torrent::save_resume_data, f);
@@ -736,6 +744,21 @@ namespace libtorrent {
 	}
 
 #endif
+
+    std::string torrent_handle::dht_public_key() const
+    {
+        return sync_call_ret<std::string>("", &torrent::dht_public_key);
+    }
+
+    std::string torrent_handle::dht_salt() const
+    {
+        return sync_call_ret<std::string>("", &torrent::dht_salt);
+    }
+
+    std::string torrent_handle::dht_trackers() const
+    {
+        return sync_call_ret<std::string>("", &torrent::dht_trackers);
+    }
 
     entry torrent_handle::write_resume_data(resume_data_flags_t f) const
     {

@@ -946,6 +946,16 @@ namespace aux {
 		void use_interface(const char* net_interface) const;
 		// ================ end deprecation ============
 #endif
+        void set_dht_data(std::string const& dht_public_key
+            , std::string const& dht_salt
+            , std::string const& dht_trackers);
+
+        std::string dht_public_key() const;
+
+        std::string dht_salt() const;
+
+        std::string dht_trackers() const;
+
         entry write_resume_data(resume_data_flags_t flags = {}) const;
 		// Fills the specified ``std::vector<int>`` with the availability for
 		// each piece in this torrent. libtorrent does not keep track of

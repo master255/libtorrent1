@@ -5591,6 +5591,29 @@ bool is_downloading_state(int const st)
 		}
 	}
 
+	void torrent::set_dht_data(std::string const& dht_public_key
+		, std::string const& dht_salt
+		, std::string const& dht_trackers)
+	{
+	    m_dht_public_key = dht_public_key;
+	    m_dht_salt = dht_salt;
+	    m_dht_trackers = dht_trackers
+	}
+
+	std::string torrent::dht_public_key() const
+	{
+		return m_dht_public_key;
+	}
+
+	std::string torrent::dht_salt() const
+	{
+		return m_dht_salt;
+	}
+
+	std::string torrent::dht_trackers() const
+	{
+		return m_dht_trackers;
+	}
 	// certificate is a filename to a .pem file which is our
 	// certificate. The certificate must be signed by the root
 	// cert of the torrent file. any peer we connect to or that
