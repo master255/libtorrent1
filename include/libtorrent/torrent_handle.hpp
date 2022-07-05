@@ -946,7 +946,7 @@ namespace aux {
 		void use_interface(const char* net_interface) const;
 		// ================ end deprecation ============
 #endif
-        entry write_resume_data() const;
+        entry write_resume_data(resume_data_flags_t flags = {}) const;
 		// Fills the specified ``std::vector<int>`` with the availability for
 		// each piece in this torrent. libtorrent does not keep track of
 		// availability for seeds, so if the torrent is seeding the availability

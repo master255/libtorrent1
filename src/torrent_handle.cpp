@@ -737,11 +737,11 @@ namespace libtorrent {
 
 #endif
 
-    entry torrent_handle::write_resume_data() const
+    entry torrent_handle::write_resume_data(resume_data_flags_t f) const
     {
         add_torrent_params params;
         auto retr = std::ref(params);
-        sync_call(&torrent::write_resume_data, resume_data_flags_t{}, retr);
+        sync_call(&torrent::write_resume_data, f, retr);
         return libtorrent::write_resume_data(params);
     }
 
