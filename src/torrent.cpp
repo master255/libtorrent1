@@ -5597,7 +5597,7 @@ bool is_downloading_state(int const st)
 	{
 	    m_dht_public_key = dht_public_key;
 	    m_dht_salt = dht_salt;
-	    m_dht_trackers = dht_trackers
+	    m_dht_trackers = dht_trackers;
 	}
 
 	std::string torrent::dht_public_key() const
