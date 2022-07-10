@@ -984,9 +984,6 @@ namespace libtorrent {
 		bool is_inactive() const;
 
 		std::string save_path() const;
-        std::string dht_public_key() const;
-        std::string dht_salt() const;
-        std::string dht_trackers() const;
 		alert_manager& alerts() const;
 		piece_picker& picker()
 		{
@@ -1180,9 +1177,6 @@ namespace libtorrent {
 			, std::string const& dh_params);
 		boost::asio::ssl::context* ssl_ctx() const { return m_ssl_ctx.get(); }
 #endif
-        void set_dht_data(std::string const& dht_public_key
-            , std::string const& dht_salt
-            , std::string const& dht_trackers);
 
 		int num_time_critical_pieces() const
 		{
@@ -1346,12 +1340,6 @@ namespace libtorrent {
 #endif
 
 		std::string m_save_path;
-
-        std::string m_dht_public_key;
-
-        std::string m_dht_salt;
-
-        std::string m_dht_trackers;
 
 #if TORRENT_ABI_VERSION == 1
 		// deprecated in 1.2
