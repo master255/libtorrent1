@@ -491,7 +491,7 @@ namespace aux {
 					, std::int64_t&, std::string const&)> cb
 				, std::string salt = std::string());
 
-			void dht_get_peers(sha1_hash const& info_hash);
+			void dht_get_peers(sha1_hash const& info_hash, sha1_hash const& original_info_hash);
 			void dht_announce(sha1_hash const& info_hash, int port = 0, dht::announce_flags_t flags = {});
 
 			void dht_live_nodes(sha1_hash const& nid);

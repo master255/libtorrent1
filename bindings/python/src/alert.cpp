@@ -1078,6 +1078,7 @@ void bind_alert()
     class_<dht_get_peers_reply_alert, bases<alert>, noncopyable>(
         "dht_get_peers_reply_alert", no_init)
         .def_readonly("info_hash", &dht_get_peers_reply_alert::info_hash)
+        .def_readonly("original_info_hash", &dht_get_peers_reply_alert::original_info_hash)
         .def("num_peers", &dht_get_peers_reply_alert::num_peers)
         .def("peers", peers)
         ;

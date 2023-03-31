@@ -2692,6 +2692,8 @@ TORRENT_VERSION_NAMESPACE_2
 
 		sha1_hash info_hash;
 
+        sha1_hash original_info_hash;
+
 		int num_peers() const;
 
 #if TORRENT_ABI_VERSION == 1

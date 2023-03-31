@@ -6112,10 +6112,10 @@ namespace {
 			i.assign(std::move(value), salt, seq, pk, sig);
 		}
 
-		void on_dht_get_peers(alert_manager& alerts, sha1_hash info_hash, std::vector<tcp::endpoint> const& peers)
+		void on_dht_get_peers(alert_manager& alerts, sha1_hash info_hash, sha1_hash original_info_hash,std::vector<tcp::endpoint> const& peers)
 		{
 			if (alerts.should_post<dht_get_peers_reply_alert>())
-				alerts.emplace_alert<dht_get_peers_reply_alert>(info_hash, peers);
+				alerts.emplace_alert<dht_get_peers_reply_alert>(info_hash, original_info_hash, peers);
 		}
 
 		void on_direct_response(alert_manager& alerts, void* userdata, dht::msg const& msg)
@@ -6146,16 +6146,16 @@ namespace {
 			, std::bind(&put_mutable_callback, _1, std::move(cb)), salt);
 	}
 
-	void session_impl::dht_get_peers(sha1_hash const& info_hash)
+	void session_impl::dht_get_peers(sha1_hash const& info_hash, sha1_hash const& original_info_hash)
 	{
 		if (!m_dht) return;
-		m_dht->get_peers(info_hash, std::bind(&on_dht_get_peers, std::ref(m_alerts), info_hash, _1));
+		m_dht->get_peers(info_hash, std::bind(&on_dht_get_peers, std::ref(m_alerts), info_hash, original_info_hash, _1));
 	}
 
 	void session_impl::dht_announce(sha1_hash const& info_hash, int port, dht::announce_flags_t const flags)
 	{
 		if (!m_dht) return;
-		m_dht->announce(info_hash, port, flags, std::bind(&on_dht_get_peers, std::ref(m_alerts), info_hash, _1));
+		m_dht->announce(info_hash, port, flags, std::bind(&on_dht_get_peers, std::ref(m_alerts), info_hash, nullptr, _1));
 	}
 
 	void session_impl::dht_live_nodes(sha1_hash const& nid)
