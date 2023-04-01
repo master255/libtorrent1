@@ -671,10 +671,10 @@ namespace {
 #endif
 	}
 
-	void session_handle::dht_get_peers(sha1_hash const& info_hash)
+	void session_handle::dht_get_peers(sha1_hash const& info_hash, sha1_hash const& original_info_hash)
 	{
 #ifndef TORRENT_DISABLE_DHT
-		async_call(&session_impl::dht_get_peers, info_hash);
+		async_call(&session_impl::dht_get_peers, info_hash, original_info_hash);
 #else
 		TORRENT_UNUSED(info_hash);
 #endif

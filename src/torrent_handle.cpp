@@ -746,9 +746,9 @@ namespace libtorrent {
     }
 
 	void torrent_handle::connect_peer(tcp::endpoint const& adr
-		, peer_source_flags_t const source, pex_flags_t const flags) const
+		, peer_source_flags_t const source, pex_flags_t const flags, sha1_hash const& info_hash) const
 	{
-		async_call(&torrent::add_peer, adr, source, flags);
+		async_call(&torrent::add_peer, adr, source, flags, info_hash);
 	}
 
 	void torrent_handle::clear_peers()

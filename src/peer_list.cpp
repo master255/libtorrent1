@@ -1045,7 +1045,7 @@ namespace libtorrent {
 	// if this returns non-nullptr, the torrent need to post status update
 	torrent_peer* peer_list::add_peer(tcp::endpoint const& remote
 		, peer_source_flags_t const src, pex_flags_t const flags
-		, torrent_state* state)
+		, torrent_state* state, sha1_hash const& info_hash)
 	{
 		TORRENT_ASSERT(is_single_thread());
 		INVARIANT_CHECK;
@@ -1097,6 +1097,7 @@ namespace libtorrent {
 			else
 				p = new (p) ipv4_peer(remote, true, src);
 
+            p->info_hash = info_hash;
 			try
 			{
 				if (!insert_peer(p, iter, flags, state))
@@ -1116,6 +1117,9 @@ namespace libtorrent {
 		{
 			p = *iter;
 			TORRENT_ASSERT(p->in_use);
+            if (!info_hash.is_all_zeros()) {
+                p->info_hash = info_hash;
+            }
 			update_peer(p, src, flags, remote);
 			state->first_time_seen = false;
 		}

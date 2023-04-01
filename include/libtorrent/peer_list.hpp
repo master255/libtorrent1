@@ -116,7 +116,7 @@ namespace libtorrent {
 		// the tracker, pex, lsd or dht.
 		torrent_peer* add_peer(tcp::endpoint const& remote
 			, peer_source_flags_t source, pex_flags_t flags
-			, torrent_state* state);
+			, torrent_state* state, sha1_hash const& info_hash = {});
 
 		// false means duplicate connection
 		bool update_peer_port(int port, torrent_peer* p

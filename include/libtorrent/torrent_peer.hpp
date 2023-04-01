@@ -99,6 +99,7 @@ namespace libtorrent {
 		// calculated lazily
 		mutable std::uint32_t peer_rank;
 
+        sha1_hash info_hash;
 		// the time when this torrent_peer was optimistically unchoked
 		// the last time. in seconds since session was created
 		// 16 bits is enough to last for 18.2 hours

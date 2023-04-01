@@ -187,8 +187,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #define TORRENT_HAS_SYMLINK 1
 #define TORRENT_HAVE_MMAP 1
-#define TORRENT_USE_NETLINK 1
-#define TORRENT_USE_IFADDRS 0
+#define TORRENT_USE_NETLINK 0
+#define TORRENT_USE_IFADDRS 1
 #define TORRENT_USE_IFCONF 1
 #define TORRENT_HAS_SALEN 0
 #define TORRENT_USE_FDATASYNC 1
@@ -202,6 +202,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #define TORRENT_ANDROID
 #define TORRENT_HAS_FALLOCATE 0
 #define TORRENT_USE_ICONV 0
+#undef TORRENT_USE_NETLINK
+#undef TORRENT_USE_IFADDRS
+#define TORRENT_USE_NETLINK 0
+#define TORRENT_USE_IFADDRS 1
 #else // ANDROID
 
 // posix_fallocate() is not available in glibc under these condition
@@ -448,7 +452,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 #ifndef TORRENT_USE_IFADDRS
-#define TORRENT_USE_IFADDRS 0
+#define TORRENT_USE_IFADDRS 1
 #endif
 
 // if preadv() exists, we assume pwritev() does as well

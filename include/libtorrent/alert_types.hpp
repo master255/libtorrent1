@@ -2683,6 +2683,7 @@ TORRENT_VERSION_NAMESPACE_2
 		// internal
 		dht_get_peers_reply_alert(aux::stack_allocator& alloc
 			, sha1_hash const& ih
+            , sha1_hash const& original_ih
 			, std::vector<tcp::endpoint> const& v);
 
 		static constexpr alert_category_t static_category = alert_category::dht_operation;

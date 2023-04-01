@@ -10419,7 +10419,7 @@ bool is_downloading_state(int const st)
 	}
 
 	torrent_peer* torrent::add_peer(tcp::endpoint const& adr
-		, peer_source_flags_t const source, pex_flags_t const flags)
+		, peer_source_flags_t const source, pex_flags_t const flags, sha1_hash const& info_hash)
 	{
 		TORRENT_ASSERT(is_single_thread());
 
@@ -10484,7 +10484,7 @@ bool is_downloading_state(int const st)
 
 		need_peer_list();
 		torrent_state st = get_peer_list_state();
-		torrent_peer* p = m_peer_list->add_peer(adr, source, flags, &st);
+		torrent_peer* p = m_peer_list->add_peer(adr, source, flags, &st, info_hash);
 		peers_erased(st.erased);
 
 		if (p)

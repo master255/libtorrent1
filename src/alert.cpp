@@ -2468,9 +2468,11 @@ namespace {
 
 	dht_get_peers_reply_alert::dht_get_peers_reply_alert(aux::stack_allocator& alloc
 		, sha1_hash const& ih
+        , sha1_hash const& original_ih
 		, std::vector<tcp::endpoint> const& peers)
 		: info_hash(ih)
-		, m_alloc(alloc)
+        , original_info_hash(original_ih)
+        , m_alloc(alloc)
 	{
 		for (auto const& endp : peers)
 		{

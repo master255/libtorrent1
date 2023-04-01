@@ -731,7 +731,12 @@ namespace {
 		ptr += 8;
 
 		// info hash
-		sha1_hash const& ih = t->torrent_file().info_hash();
+        sha1_hash ih;
+        if (peer_info_struct() != nullptr && !peer_info_struct()->info_hash.is_all_zeros()) {
+            ih = peer_info_struct()->info_hash;
+        } else {
+		    ih = t->torrent_file().info_hash();
+        }
 		std::memcpy(ptr, ih.data(), ih.size());
 		ptr += 20;
 
@@ -3148,14 +3153,16 @@ namespace {
 			else
 			{
 				// verify info hash
-				if (!std::equal(recv_buffer.begin() + 8, recv_buffer.begin() + 28
-					, t->torrent_file().info_hash().data()))
+                sha1_hash info_hash;
+                std::copy(recv_buffer.begin() + 8, recv_buffer.begin() + 28
+                        , info_hash.data());
+				if (info_hash != t->torrent_file().info_hash() && (peer_info_struct() == nullptr || info_hash != peer_info_struct()->info_hash))
 				{
 #ifndef TORRENT_DISABLE_LOGGING
-					peer_log(peer_log_alert::info, "ERROR", "received invalid info_hash");
+                        peer_log(peer_log_alert::info, "ERROR", "received invalid info_hash");
 #endif
-					disconnect(errors::invalid_info_hash, operation_t::bittorrent, failure);
-					return;
+                        disconnect(errors::invalid_info_hash, operation_t::bittorrent, failure);
+                        return;
 				}
 
 #ifndef TORRENT_DISABLE_LOGGING

@@ -1129,7 +1129,7 @@ namespace aux {
 		//
 		// For possible values of ``flags``, see pex_flags_t.
 		void connect_peer(tcp::endpoint const& adr, peer_source_flags_t source = {}
-			, pex_flags_t flags = pex_encryption | pex_utp | pex_holepunch) const;
+			, pex_flags_t flags = pex_encryption | pex_utp | pex_holepunch, sha1_hash const& info_hash = {}) const;
 
 		// This will disconnect all peers and clear the peer list for this
 		// torrent. New peers will have to be acquired before resuming, from
