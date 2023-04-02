@@ -1258,7 +1258,7 @@ namespace libtorrent {
 
 		TORRENT_ASSERT(!m_disconnecting);
 		TORRENT_ASSERT(m_torrent.expired());
-		std::weak_ptr<torrent> wpt = m_ses.find_torrent(ih);
+		std::weak_ptr<torrent> wpt = m_ses.find_torrent_similar(ih);
 		std::shared_ptr<torrent> t = wpt.lock();
 
 		if (t && t->is_aborted())

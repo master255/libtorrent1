@@ -2687,7 +2687,7 @@ bool is_downloading_state(int const st)
 		if (!m_announce_to_lsd) return;
 
 		// private torrents are never announced on LSD
-		if (m_torrent_file->is_valid() && m_torrent_file->priv()) return;
+//		if (m_torrent_file->is_valid() && m_torrent_file->priv()) return;
 
 		// i2p torrents are also never announced on LSD
 		// unless we allow mixed swarms

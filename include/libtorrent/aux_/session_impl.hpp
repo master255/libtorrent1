@@ -413,6 +413,7 @@ namespace aux {
 			void incoming_connection(std::shared_ptr<socket_type> const& s);
 
 			std::weak_ptr<torrent> find_torrent(sha1_hash const& info_hash) const override;
+            std::weak_ptr<torrent> find_torrent_similar(sha1_hash const& info_hash) const override;
 #if TORRENT_ABI_VERSION == 1
 			//deprecated in 1.2
 

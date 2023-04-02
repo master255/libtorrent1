@@ -4391,6 +4391,20 @@ namespace {
 		return std::weak_ptr<torrent>();
 	}
 
+    std::weak_ptr<torrent> session_impl::find_torrent_similar(sha1_hash const& info_hash) const
+    {
+        for (auto const& tp : m_torrents)
+        {
+            if (tp.first == info_hash) return tp.second;
+            std::vector<sha1_hash> const& s = tp.second->torrent_file().similar_torrents();
+            for (auto const& ih : s)
+            {
+                if (ih == info_hash) return tp.second;
+            }
+        }
+        return std::weak_ptr<torrent>();
+    }
+
 	void session_impl::insert_torrent(sha1_hash const& ih, std::shared_ptr<torrent> const& t
 #if TORRENT_ABI_VERSION == 1
 		, std::string const uuid
@@ -5591,13 +5605,13 @@ namespace {
 
 		INVARIANT_CHECK;
 
-		std::shared_ptr<torrent> t = find_torrent(ih).lock();
+		std::shared_ptr<torrent> t = find_torrent_similar(ih).lock();
 		if (!t) return;
 		// don't add peers from lsd to private torrents
-		if (t->torrent_file().priv() || (t->torrent_file().is_i2p()
-			&& !m_settings.get_bool(settings_pack::allow_i2p_mixed))) return;
+		if (t->torrent_file().is_i2p()
+			&& !m_settings.get_bool(settings_pack::allow_i2p_mixed)) return;
 
-		t->add_peer(peer, peer_info::lsd);
+		t->add_peer(peer, peer_info::lsd, {}, ih);
 #ifndef TORRENT_DISABLE_LOGGING
 		if (should_log())
 		{

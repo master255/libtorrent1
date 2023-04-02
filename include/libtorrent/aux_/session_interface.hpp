@@ -180,6 +180,7 @@ namespace aux {
 		virtual void trigger_unchoke() noexcept = 0;
 
 		virtual std::weak_ptr<torrent> find_torrent(sha1_hash const& info_hash) const = 0;
+        virtual std::weak_ptr<torrent> find_torrent_similar(sha1_hash const& info_hash) const = 0;
 		virtual std::weak_ptr<torrent> find_disconnect_candidate_torrent() const = 0;
 		virtual std::shared_ptr<torrent> delay_load_torrent(sha1_hash const& info_hash
 			, peer_connection* pc) = 0;

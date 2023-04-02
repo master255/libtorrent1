@@ -529,7 +529,12 @@ namespace {
 		TORRENT_ASSERT(t);
 
 		hasher h;
-		sha1_hash const& info_hash = t->torrent_file().info_hash();
+        sha1_hash info_hash;
+        if (peer_info_struct() != nullptr && !peer_info_struct()->info_hash.is_all_zeros()) {
+            info_hash = peer_info_struct()->info_hash;
+        } else {
+            info_hash = t->torrent_file().info_hash();
+        }
 		key_t const secret_key = m_dh_key_exchange->get_secret();
 		std::array<char, dh_key_len> const secret = export_key(secret_key);
 
@@ -1449,6 +1454,7 @@ namespace {
 			} break;
 			case hp_message::connect:
 			{
+//                peer_log(peer_log_alert::incoming_message, "HOLEPUNCH", "added");
 				// add or find the peer with this endpoint
 				torrent_peer* p = t->add_peer(ep, peer_info::pex);
 				if (p == nullptr || p->connection)
@@ -3148,6 +3154,9 @@ namespace {
 					, info_hash.data());
 
 				attach_to_torrent(info_hash);
+//#ifndef TORRENT_DISABLE_LOGGING
+//                peer_log(peer_log_alert::info, "ERROR", "received invalid info_hash11");
+//#endif
 				if (is_disconnecting()) return;
 			}
 			else
@@ -3156,13 +3165,34 @@ namespace {
                 sha1_hash info_hash;
                 std::copy(recv_buffer.begin() + 8, recv_buffer.begin() + 28
                         , info_hash.data());
-				if (info_hash != t->torrent_file().info_hash() && (peer_info_struct() == nullptr || info_hash != peer_info_struct()->info_hash))
+				if (info_hash != t->torrent_file().info_hash())
 				{
+                    if (!is_outgoing()) {
+                        if (!t->torrent_file().similar_torrents().empty()) {
+                            bool exist = false;
+                            for (auto const &ih: t->torrent_file().similar_torrents()) {
+                                if (info_hash == ih) {
+                                    exist = true;
+                                    break;
+                                }
+                            }
+                            if (!exist) {
 #ifndef TORRENT_DISABLE_LOGGING
-                        peer_log(peer_log_alert::info, "ERROR", "received invalid info_hash");
+                                peer_log(peer_log_alert::info, "ERROR", "received invalid info_hash22");
 #endif
-                        disconnect(errors::invalid_info_hash, operation_t::bittorrent, failure);
-                        return;
+                                disconnect(errors::invalid_info_hash, operation_t::bittorrent, failure);
+                                return;
+                            }
+                        }
+                    } else {
+                        if (peer_info_struct() == nullptr || info_hash != peer_info_struct()->info_hash) {
+#ifndef TORRENT_DISABLE_LOGGING
+                            peer_log(peer_log_alert::info, "ERROR", "received invalid info_hash333");
+#endif
+                            disconnect(errors::invalid_info_hash, operation_t::bittorrent, failure);
+                            return;
+                        }
+                    }
 				}
 
 #ifndef TORRENT_DISABLE_LOGGING
