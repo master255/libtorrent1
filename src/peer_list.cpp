@@ -1117,9 +1117,7 @@ namespace libtorrent {
 		{
 			p = *iter;
 			TORRENT_ASSERT(p->in_use);
-            if (!info_hash.is_all_zeros()) {
-                p->info_hash = info_hash;
-            }
+            p->info_hash = info_hash;
 			update_peer(p, src, flags, remote);
 			state->first_time_seen = false;
 		}
