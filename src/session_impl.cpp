@@ -2155,7 +2155,7 @@ namespace {
 	namespace {
 		template <typename MapProtocol, typename ProtoType, typename EndpointType>
 		void map_port(MapProtocol& m, ProtoType protocol, EndpointType const& ep
-			, port_mapping_t& map_handle)
+			, port_mapping_t& map_handle, std::string const& device)
 		{
 			if (map_handle != port_mapping_t{-1}) m.delete_mapping(map_handle);
 			map_handle = port_mapping_t{-1};
@@ -2168,7 +2168,7 @@ namespace {
 
 			// only update this mapping if we actually have a socket listening
 			if (ep != EndpointType())
-				map_handle = m.add_mapping(protocol, ep.port(), ep);
+				map_handle = m.add_mapping(protocol, ep.port(), ep, device);
 		}
 	}
 
@@ -2181,16 +2181,16 @@ namespace {
 		if ((mask & remap_natpmp) && s.natpmp_mapper)
 		{
 			map_port(*s.natpmp_mapper, portmap_protocol::tcp, tcp_ep
-				, s.tcp_port_mapping[portmap_transport::natpmp].mapping);
+				, s.tcp_port_mapping[portmap_transport::natpmp].mapping, s.device);
 			map_port(*s.natpmp_mapper, portmap_protocol::udp, make_tcp(udp_ep)
-				, s.udp_port_mapping[portmap_transport::natpmp].mapping);
+				, s.udp_port_mapping[portmap_transport::natpmp].mapping, s.device);
 		}
 		if ((mask & remap_upnp) && s.upnp_mapper)
 		{
 			map_port(*s.upnp_mapper, portmap_protocol::tcp, tcp_ep
-				, s.tcp_port_mapping[portmap_transport::upnp].mapping);
+				, s.tcp_port_mapping[portmap_transport::upnp].mapping, s.device);
 			map_port(*s.upnp_mapper, portmap_protocol::udp, make_tcp(udp_ep)
-				, s.udp_port_mapping[portmap_transport::upnp].mapping);
+				, s.udp_port_mapping[portmap_transport::upnp].mapping, s.device);
 		}
 	}
 
@@ -4819,9 +4819,12 @@ namespace {
 		std::tie(torrent_ptr, added) = add_torrent_impl(params, ec);
 
 		torrent_handle const handle(torrent_ptr);
-		m_alerts.emplace_alert<add_torrent_alert>(handle, params, ec);
 
-		if (!torrent_ptr) return handle;
+		if (!torrent_ptr)
+		{
+			m_alerts.emplace_alert<add_torrent_alert>(handle, params, ec);
+			return handle;
+		}
 
 		// params.info_hash should have been initialized by add_torrent_impl()
 		TORRENT_ASSERT(params.info_hash != sha1_hash(nullptr));
@@ -4844,6 +4847,7 @@ namespace {
 		if (!added)
 		{
 			abort_torrent.disarm();
+			m_alerts.emplace_alert<add_torrent_alert>(handle, params, ec);
 			return handle;
 		}
 
@@ -4869,6 +4873,8 @@ namespace {
 				: params.uuid
 #endif
 		);
+
+		m_alerts.emplace_alert<add_torrent_alert>(handle, params, ec);
 
 		// once we successfully add the torrent, we can disarm the abort action
 		abort_torrent.disarm();
@@ -6217,6 +6223,7 @@ namespace {
 		// since we're destructing the session, no more alerts will make it out to
 		// the user. So stop posting them now
 		m_alerts.set_alert_mask({});
+		m_alerts.set_notify_function({});
 
 		// this is not allowed to be the network thread!
 //		TORRENT_ASSERT(is_not_thread());
@@ -6897,10 +6904,11 @@ namespace {
 		std::vector<port_mapping_t> ret;
 		for (auto& s : m_listen_sockets)
 		{
-			if (s->upnp_mapper) ret.push_back(s->upnp_mapper->add_mapping(t, external_port
-				, tcp::endpoint(s->local_endpoint.address(), static_cast<std::uint16_t>(local_port))));
-			if (s->natpmp_mapper) ret.push_back(s->natpmp_mapper->add_mapping(t, external_port
-				, tcp::endpoint(s->local_endpoint.address(), static_cast<std::uint16_t>(local_port))));
+			tcp::endpoint const ep{s->local_endpoint.address(), static_cast<std::uint16_t>(local_port)};
+			if (s->upnp_mapper) ret.push_back(s->upnp_mapper->add_mapping(
+				t, external_port, ep, s->device));
+			if (s->natpmp_mapper) ret.push_back(s->natpmp_mapper->add_mapping(
+				t, external_port, ep, s->device));
 		}
 		return ret;
 	}

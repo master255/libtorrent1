@@ -1,3 +1,25 @@
+
+	* fix issue with odd piece sizes
+
+1.2.18 released
+
+	* fix issue where stop-when-ready would not close files
+	* uTP performance, fix packet loss when sending is stalled
+	* uTP performance, prevent premature timeouts/resends
+	* uTP performance, more lenient nagle's algorithm to always allow one outstanding undersized packet
+	* uTP performance, piggy-back held back undersized packet with ACKs
+	* uTP performance, don't send redundant deferred ACKs
+	* fix wanted_done/done accounting when force-rechecking
+	* expose userdata via torrent_handle (back-port from 2.0)
+	* fix renaming of filenames that are too long for the filesystem
+	* made UPnP and LSD code avoid using select_reactor (to work around an issue on windows in boost.asio < 1.80)
+
+1.2.17 released
+
+	* fixed tracker connections spinning when hostname lookups stall
+	* fixed error in pkg-config file generation in Jamfile
+	* improve backwards compatibility with loading magnet link resume files
+	* fix bind-to-device for tracker announces and UPnP
 	* rename peer_tos setting to peer_dscp
 	* fix bdecode support for large strings (>= 100 MB)
 

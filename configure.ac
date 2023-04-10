@@ -5,7 +5,7 @@
 
 AC_PREREQ([2.63])
 
-AC_INIT([libtorrent-rasterbar],[1.2.16],[arvid@libtorrent.org],
+AC_INIT([libtorrent-rasterbar],[1.2.18],[arvid@libtorrent.org],
         [libtorrent-rasterbar],[http://www.libtorrent.org])
 AC_CONFIG_SRCDIR([src/torrent.cpp])
 AC_CONFIG_AUX_DIR([build-aux])
@@ -486,6 +486,7 @@ AS_CASE(["$ARG_ENABLE_PYTHON_BINDING"],
   ["yes"], [
       AC_MSG_RESULT([yes])
 
+      # TODO: bump to 3.7+, once ubuntu-18.04 is EOL in 2023-04
       AM_PATH_PYTHON([3.6], [], AC_MSG_ERROR([Python interpreter not found.]))
       AX_PYTHON_DEVEL([>= '2.4'])
       AX_BOOST_PYTHON()

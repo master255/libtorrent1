@@ -222,6 +222,7 @@ bool is_downloading_state(int const st)
 		, m_deleted(false)
 		, m_last_download(seconds32(p.last_download))
 		, m_last_upload(seconds32(p.last_upload))
+		, m_userdata(p.userdata)
 		, m_auto_managed(p.flags & torrent_flags::auto_managed)
 		, m_current_gauge_state(static_cast<std::uint32_t>(no_gauge_state))
 		, m_moving_storage(false)
@@ -753,7 +754,7 @@ bool is_downloading_state(int const st)
 #endif
 				));
 		aux::proxy_settings ps = m_ses.proxy();
-		conn->get(m_url, seconds(30), 0, &ps
+		conn->get(m_url, seconds(30), &ps
 			, 5
 			, settings().get_bool(settings_pack::anonymous_mode)
 				? "" : settings().get_str(settings_pack::user_agent));
@@ -1517,8 +1518,8 @@ bool is_downloading_state(int const st)
 
 	peer_request torrent::to_req(piece_block const& p) const
 	{
-		int block_offset = p.block_index * block_size();
-		int block = std::min(torrent_file().piece_size(
+		int const block_offset = p.block_index * block_size();
+		int const block = std::min(torrent_file().piece_size(
 			p.piece_index) - block_offset, block_size());
 		TORRENT_ASSERT(block > 0);
 		TORRENT_ASSERT(block <= block_size());
@@ -2154,13 +2155,9 @@ bool is_downloading_state(int const st)
 		if (status == status_t::fatal_disk_error)
 		{
 			TORRENT_ASSERT(m_outstanding_check_files == false);
-			m_add_torrent_params.reset();
 			handle_disk_error("check_resume_data", error);
 			auto_managed(false);
 			pause();
-			set_state(torrent_status::checking_files);
-			if (should_check_files()) start_checking();
-			return;
 		}
 
 		state_updated();
@@ -2299,7 +2296,7 @@ bool is_downloading_state(int const st)
 
 				// --- UNFINISHED PIECES ---
 
-				int const num_blocks_per_piece = torrent_file().piece_length() / block_size();
+				int const num_blocks_per_piece = torrent_file().blocks_per_piece();
 
 				for (auto const& p : m_add_torrent_params->unfinished_pieces)
 				{
@@ -2635,13 +2632,24 @@ bool is_downloading_state(int const st)
 #ifndef TORRENT_DISABLE_LOGGING
 		debug_log("on_piece_hashed, completed");
 #endif
-		if (m_auto_managed)
+
+		auto const& pack = settings();
+		auto get_int_setting = [&pack](int const name) {
+			int const v = pack.get_int(name);
+			if (v < 0) return std::numeric_limits<int>::max();
+			return v;
+		};
+		int const limit = std::min({
+			get_int_setting(settings_pack::active_downloads)
+			, get_int_setting(settings_pack::active_seeds)
+			, get_int_setting(settings_pack::active_limit)});
+		int const num_torrents = m_ses.num_torrents();
+		if (m_auto_managed && num_torrents > limit)
 		{
-			// if we're auto managed. assume we need to be paused until the auto
-			// managed logic runs again (which is triggered further down)
-			// setting flags to 0 prevents the disk cache from being evicted as a
-			// result of this
-			set_paused(true, {});
+			// if we're auto managed and we've reached one of the limits. Assume
+			// we need to be paused until the auto managed logic runs again
+			// (which is triggered further down)
+			set_paused(true);
 		}
 
 		// we're done checking! (this should cause a call to trigger_auto_manage)
@@ -6492,7 +6500,7 @@ bool is_downloading_state(int const st)
 		// in either case; there will be no half-finished pieces.
 		if (has_picker())
 		{
-			int const num_blocks_per_piece = torrent_file().piece_length() / block_size();
+			int const num_blocks_per_piece = torrent_file().blocks_per_piece();
 
 			std::vector<piece_picker::downloading_piece> const q
 				= m_picker->get_download_queue();
@@ -8780,10 +8788,10 @@ bool is_downloading_state(int const st)
 			set_need_save_resume();
 		}
 
-		set_paused(true, flags | torrent_handle::clear_disk_cache);
+		set_paused(true, flags);
 	}
 
-	void torrent::do_pause(pause_flags_t const flags, bool const was_paused)
+	void torrent::do_pause(bool const was_paused)
 	{
 		TORRENT_ASSERT(is_single_thread());
 		if (!is_paused()) return;
@@ -8860,7 +8868,7 @@ bool is_downloading_state(int const st)
 		{
 			// this will make the storage close all
 			// files and flush all cached data
-			if (m_storage && (flags & torrent_handle::clear_disk_cache))
+			if (m_storage)
 			{
 				// the torrent_paused alert will be posted from on_torrent_paused
 				m_ses.disk_thread().async_stop_torrent(m_storage
@@ -9007,7 +9015,7 @@ bool is_downloading_state(int const st)
 			{
 				m_graceful_pause_mode = false;
 				update_gauge();
-				do_pause(flags, true);
+				do_pause(true);
 			}
 			return;
 		}
@@ -9022,7 +9030,7 @@ bool is_downloading_state(int const st)
 
 		m_graceful_pause_mode = bool(flags & torrent_handle::graceful_pause);
 
-		if (b) do_pause(flags);
+		if (b) do_pause();
 		else do_resume();
 	}
 
@@ -9491,7 +9499,7 @@ bool is_downloading_state(int const st)
 
 		// these counters are saved in the resume data, since they updated
 		// we need to save the resume data too
-		m_need_save_resume_data = true;
+		set_need_save_resume();
 
 		// if the rate is 0, there's no update because of network transfers
 		if (m_stat.low_pass_upload_rate() > 0 || m_stat.low_pass_download_rate() > 0)
@@ -10849,9 +10857,27 @@ bool is_downloading_state(int const st)
 				get_handle());
 		}
 
-		if (m_stop_when_ready
+		bool const trigger_stop = m_stop_when_ready
 			&& !is_downloading_state(m_state)
-			&& is_downloading_state(s))
+			&& is_downloading_state(s);
+
+		// we need to update the state before calling pause(), because otherwise
+		// it may think we're still checking files, even though we're just
+		// leaving that state
+		m_state = s;
+
+		update_gauge();
+		update_want_peers();
+		update_want_tick();
+		update_state_list();
+
+		state_updated();
+
+#ifndef TORRENT_DISABLE_LOGGING
+		debug_log("set_state() %d", m_state);
+#endif
+
+		if (trigger_stop)
 		{
 #ifndef TORRENT_DISABLE_LOGGING
 			debug_log("stop_when_ready triggered");
@@ -10864,19 +10890,6 @@ bool is_downloading_state(int const st)
 			pause();
 			m_stop_when_ready = false;
 		}
-
-		m_state = s;
-
-#ifndef TORRENT_DISABLE_LOGGING
-		debug_log("set_state() %d", m_state);
-#endif
-
-		update_gauge();
-		update_want_peers();
-		update_want_tick();
-		update_state_list();
-
-		state_updated();
 
 #ifndef TORRENT_DISABLE_EXTENSIONS
 		for (auto& ext : m_extensions)

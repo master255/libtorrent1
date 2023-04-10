@@ -124,7 +124,7 @@ constexpr int CLOSE_FILE_INTERVAL = 0;
 		SET(proxy_username, "", &session_impl::update_proxy),
 		SET(proxy_password, "", &session_impl::update_proxy),
 		SET(i2p_hostname, "", &session_impl::update_i2p_bridge),
-		SET(peer_fingerprint, "-LT12G0-", nullptr),
+		SET(peer_fingerprint, "-LT12I0-", nullptr),
 		SET(dht_bootstrap_nodes, "dht.libtorrent.org:25401", &session_impl::update_dht_bootstrap_nodes)
 	}});
 
@@ -382,6 +382,11 @@ constexpr int CLOSE_FILE_INTERVAL = 0;
 			if (key != bool_settings[k].name) continue;
 			return settings_pack::bool_type_base + k;
 		}
+
+		// backwards compatibility with previous name
+		if (key == "peer_tos")
+			return settings_pack::peer_dscp;
+
 		return -1;
 	}
 

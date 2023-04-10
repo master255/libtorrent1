@@ -287,12 +287,14 @@ namespace
 #if TORRENT_ABI_VERSION == 1
             else if(key == "resume_data")
             {
+                python_deprecated("the resume_data member is deprecated");
                 std::string resume = extract<std::string>(value);
                 p.resume_data.assign(resume.begin(), resume.end());
                 continue;
             }
             else if(key == "uuid")
             {
+                python_deprecated("the uuid member is deprecated");
                 p.uuid = extract<std::string>(value);
                 continue;
             }
@@ -347,6 +349,7 @@ namespace
 #if TORRENT_ABI_VERSION == 1
             else if(key == "url")
             {
+                python_deprecated("the url member is deprecated");
                 p.url = extract<std::string>(value);
                 continue;
             }
@@ -594,6 +597,7 @@ namespace
 
     dict get_utp_stats(session_status const& st)
     {
+        python_deprecated("session_status is deprecated");
         dict ret;
         ret["num_idle"] = st.utp_stats.num_idle;
         ret["num_syn_sent"] = st.utp_stats.num_syn_sent;

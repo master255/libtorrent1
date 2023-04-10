@@ -501,11 +501,6 @@ if(static_runtime)
 	set(OPENSSL_MSVC_STATIC_RT ON)
 endif()
 
-if (NOT BUILD_SHARED_LIBS)
-	set(Boost_USE_STATIC_LIBS ON)
-	set(OPENSSL_USE_STATIC_LIBS ON)
-endif()
-
 add_library(torrent-rasterbar
 	${sources}
 	${libtorrent_include_files}
@@ -915,6 +910,32 @@ install(
 	DESTINATION
 		${CMAKE_INSTALL_DATADIR}/cmake/Modules
 )
+
+if (MSVC)
+	set_target_properties(torrent-rasterbar
+	PROPERTIES
+		PDB_NAME torrent-rasterbar
+		PDB_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+		COMPILE_PDB_NAME torrent-rasterbar
+		COMPILE_PDB_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+	)
+
+	if (static_runtime)
+		set(PDB_INSTALL_DIR lib)
+	else()
+		set(PDB_INSTALL_DIR bin)
+	endif()
+
+	install(
+		FILES
+			${CMAKE_BINARY_DIR}/torrent-rasterbar.pdb
+		DESTINATION
+			${PDB_INSTALL_DIR}
+		CONFIGURATIONS
+			Debug RelWithDebInfo
+		OPTIONAL
+	)
+endif()
 
 # === build tools ===
 if (build_tools)
