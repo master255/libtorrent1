@@ -1719,19 +1719,22 @@ namespace {
 				, "%s", print_entry(root, true).c_str());
 		}
 #endif
-
+        /*peer_log(peer_log_alert::info, "MY_MESSAGE"
+                , "infohash: %s %s"
+                , aux::to_hex(t->info_hash()).c_str(), (is_outgoing() ? "true" : "false"));*/
 #ifndef TORRENT_DISABLE_EXTENSIONS
-		for (auto i = m_extensions.begin();
-			!m_extensions.empty() && i != m_extensions.end();)
-		{
-			// a false return value means that the extension
-			// isn't supported by the other end. So, it is removed.
-			if (!(*i)->on_extension_handshake(root))
-				i = m_extensions.erase(i);
-			else
-				++i;
-		}
-		if (is_disconnecting()) return;
+        if (peer_info_struct() == nullptr || peer_info_struct()->info_hash.is_all_zeros() || t->info_hash() == peer_info_struct()->info_hash) {
+            for (auto i = m_extensions.begin();
+                 !m_extensions.empty() && i != m_extensions.end();) {
+                // a false return value means that the extension
+                // isn't supported by the other end. So, it is removed.
+                if (!(*i)->on_extension_handshake(root))
+                    i = m_extensions.erase(i);
+                else
+                    ++i;
+            }
+            if (is_disconnecting()) return;
+        }
 #endif
 
         if (m_settings.get_bool(settings_pack::support_urlseed_redirection) && t->valid_metadata())
