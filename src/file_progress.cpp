@@ -126,6 +126,11 @@ namespace libtorrent { namespace aux {
 #endif
 	}
 
+    void file_progress::clear_file(file_index_t const index)
+    {
+        m_file_progress[index] = 0;
+    }
+
 	// update the file progress now that we just completed downloading piece
 	// 'index'
 	void file_progress::update(file_storage const& fs, piece_index_t const index

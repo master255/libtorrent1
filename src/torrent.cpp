@@ -10675,6 +10675,18 @@ bool is_downloading_state(int const st)
 #endif
 #endif // TORRENT_ABI_VERSION
 
+    void torrent::clear_file_progress(file_index_t const index, piece_index_t const start_piece, piece_index_t const end_piece) {
+        pause(torrent_handle::graceful_pause);
+        if (has_picker()) {
+            for (piece_index_t i = start_piece; i < end_piece; ++i) {
+                m_picker->we_dont_have(i);
+            }
+            update_gauge();
+        }
+        m_file_progress.clear_file(index);
+        set_state(torrent_status::downloading);
+    }
+
 	void torrent::file_progress(aux::vector<std::int64_t, file_index_t>& fp, int const flags)
 	{
 		TORRENT_ASSERT(is_single_thread());

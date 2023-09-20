@@ -608,6 +608,8 @@ namespace libtorrent {
 
 		void file_progress(aux::vector<std::int64_t, file_index_t>& fp, int flags = 0);
 
+        void clear_file_progress(file_index_t index, piece_index_t start_piece, piece_index_t end_piece);
+
 #if TORRENT_ABI_VERSION == 1
 		void use_interface(std::string net_interface);
 #endif

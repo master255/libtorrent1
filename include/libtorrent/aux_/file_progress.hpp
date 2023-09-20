@@ -69,6 +69,7 @@ namespace aux {
 
 		bool empty() const { return m_file_progress.empty(); }
 		void clear();
+        void clear_file(file_index_t index);
 
 		void update(file_storage const& fs, piece_index_t index
 			, std::function<void(file_index_t)> const& completed_cb);

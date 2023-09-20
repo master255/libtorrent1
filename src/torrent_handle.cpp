@@ -447,6 +447,11 @@ namespace libtorrent {
 		sync_call(&torrent::file_progress, std::ref(arg), flags);
 	}
 
+    void torrent_handle::clear_file_progress(file_index_t const index, piece_index_t const start_piece, piece_index_t const end_piece) const
+    {
+        sync_call(&torrent::clear_file_progress, index, start_piece, end_piece);
+    }
+
 	torrent_status torrent_handle::status(status_flags_t const flags) const
 	{
 		torrent_status st;
