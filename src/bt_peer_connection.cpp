@@ -1454,7 +1454,6 @@ namespace {
 			} break;
 			case hp_message::connect:
 			{
-//                peer_log(peer_log_alert::incoming_message, "HOLEPUNCH", "added");
 				// add or find the peer with this endpoint
 				torrent_peer* p = t->add_peer(ep, peer_info::pex);
 				if (p == nullptr || p->connection)
@@ -1719,9 +1718,7 @@ namespace {
 				, "%s", print_entry(root, true).c_str());
 		}
 #endif
-        /*peer_log(peer_log_alert::info, "MY_MESSAGE"
-                , "infohash: %s %s"
-                , aux::to_hex(t->info_hash()).c_str(), (is_outgoing() ? "true" : "false"));*/
+
 #ifndef TORRENT_DISABLE_EXTENSIONS
         if (peer_info_struct() == nullptr || peer_info_struct()->info_hash.is_all_zeros() || t->info_hash() == peer_info_struct()->info_hash) {
             for (auto i = m_extensions.begin();
@@ -3157,9 +3154,6 @@ namespace {
 					, info_hash.data());
 
 				attach_to_torrent(info_hash);
-//#ifndef TORRENT_DISABLE_LOGGING
-//                peer_log(peer_log_alert::info, "ERROR", "received invalid info_hash11");
-//#endif
 				if (is_disconnecting()) return;
 			}
 			else

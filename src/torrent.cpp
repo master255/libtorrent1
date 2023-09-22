@@ -220,8 +220,8 @@ bool is_downloading_state(int const st)
 		, m_announce_to_dht(!(p.flags & torrent_flags::paused))
 		, m_ssl_torrent(false)
 		, m_deleted(false)
-		, m_last_download(seconds32(p.last_download))
-		, m_last_upload(seconds32(p.last_upload))
+		, m_last_download(aux::from_time_t(p.last_download))
+		, m_last_upload(aux::from_time_t(p.last_upload))
 		, m_userdata(p.userdata)
 		, m_auto_managed(p.flags & torrent_flags::auto_managed)
 		, m_current_gauge_state(static_cast<std::uint32_t>(no_gauge_state))
@@ -794,6 +794,13 @@ bool is_downloading_state(int const st)
 		TORRENT_ASSERT(is_single_thread());
 		if (!m_enable_dht) return false;
 		if (!m_ses.announce_dht()) return false;
+
+#if TORRENT_USE_I2P
+		// i2p torrents don't announced on the DHT
+		// unless we allow mixed swarms
+		if (is_i2p() && !settings().get_bool(settings_pack::allow_i2p_mixed))
+			return false;
+#endif
 
 		if (!m_ses.dht()) return false;
 		if (m_torrent_file->is_valid() && !m_files_checked) return false;
@@ -1394,12 +1401,33 @@ bool is_downloading_state(int const st)
 		piece_index_t m_piece;
 	};
 
+	void torrent::add_piece_async(piece_index_t const piece
+		, std::vector<char> data, add_piece_flags_t const flags)
+	{
+		TORRENT_ASSERT(is_single_thread());
+
+		// make sure the piece index is correct
+		if (piece >= torrent_file().end_piece())
+			return;
+
+		// make sure the piece size is correct
+		if (data.size() != std::size_t(m_torrent_file->piece_size(piece)))
+			return;
+
+		add_piece(piece, data.data(), flags);
+	}
+
 	// TODO: 3 there's some duplication between this function and
 	// peer_connection::incoming_piece(). is there a way to merge something?
 	void torrent::add_piece(piece_index_t const piece, char const* data
 		, add_piece_flags_t const flags)
 	{
 		TORRENT_ASSERT(is_single_thread());
+		
+		// make sure the piece index is correct
+		if (piece >= torrent_file().end_piece())
+			return;
+
 		int const piece_size = m_torrent_file->piece_size(piece);
 		int const blocks_in_piece = (piece_size + block_size() - 1) / block_size();
 
@@ -2737,6 +2765,10 @@ bool is_downloading_state(int const st)
 #ifndef TORRENT_DISABLE_LOGGING
 			if (should_log())
 			{
+#if TORRENT_USE_I2P
+				if (is_i2p() && !settings().get_bool(settings_pack::allow_i2p_mixed))
+					debug_log("DHT: i2p torrent (and mixed peers not allowed)");
+#endif
 				if (!m_ses.announce_dht())
 					debug_log("DHT: no listen sockets");
 
@@ -3240,9 +3272,16 @@ bool is_downloading_state(int const st)
 			&& m_apply_ip_filter)
 			req.filter = m_ip_filter;
 
+		auto& ae = m_trackers[idx];
+#if TORRENT_USE_I2P
+		if (is_i2p_url(ae.url))
+			req.kind |= tracker_request::i2p;
+		else if (is_i2p() && !settings().get_bool(settings_pack::allow_i2p_mixed))
+			return;
+#endif
 		req.info_hash = m_torrent_file->info_hash();
 		req.kind |= tracker_request::scrape_request;
-		req.url = m_trackers[idx].url;
+		req.url = ae.url;
 		req.private_torrent = m_torrent_file->priv();
 #if TORRENT_ABI_VERSION == 1
 		req.auth = tracker_login();
@@ -3454,11 +3493,11 @@ bool is_downloading_state(int const st)
 				continue;
 
 #if TORRENT_USE_I2P
-			if (r.i2pconn && string_ends_with(i.hostname, ".i2p"))
+			if (r.i2pconn)
 			{
 				// this is an i2p name, we need to use the SAM connection
 				// to do the name lookup
-				if (string_ends_with(i.hostname, ".b32.i2p"))
+				if (string_ends_with(i.hostname, ".i2p"))
 				{
 					ADD_OUTSTANDING_ASYNC("torrent::on_i2p_resolve");
 					r.i2pconn->async_name_lookup(i.hostname.c_str()
@@ -5375,7 +5414,6 @@ bool is_downloading_state(int const st)
 		if (m_torrent_file->num_pieces() == 0) return;
 
 		bool need_update = false;
-		std::int64_t position = 0;
 		// initialize the piece priorities to 0, then only allow
 		// setting higher priorities
 		aux::vector<download_priority_t, piece_index_t> pieces(aux::numeric_cast<std::size_t>(
@@ -5385,7 +5423,6 @@ bool is_downloading_state(int const st)
 		{
 			std::int64_t const size = m_torrent_file->files().file_size(i);
 			if (size == 0) continue;
-			position += size;
 
 			// pad files always have priority 0
 			download_priority_t const file_prio
@@ -6459,8 +6496,8 @@ bool is_downloading_state(int const st)
 		ret.finished_time = static_cast<int>(total_seconds(finished_time()));
 		ret.seeding_time = static_cast<int>(total_seconds(seeding_time()));
 		ret.last_seen_complete = m_last_seen_complete;
-		ret.last_upload = std::time_t(total_seconds(m_last_upload.time_since_epoch()));
-		ret.last_download = std::time_t(total_seconds(m_last_download.time_since_epoch()));
+		ret.last_upload = aux::to_time_t(m_last_upload);
+		ret.last_download = aux::to_time_t(m_last_download);
 
 		ret.num_complete = m_complete;
 		ret.num_incomplete = m_incomplete;
@@ -11010,7 +11047,7 @@ bool is_downloading_state(int const st)
 		st->completed_time = m_completed_time;
 
 #if TORRENT_ABI_VERSION == 1
-		st->last_scrape = static_cast<int>(total_seconds(aux::time_now32() - m_last_scrape));
+		st->last_scrape = static_cast<int>(total_seconds(now - m_last_scrape));
 #endif
 
 #if TORRENT_ABI_VERSION == 1
@@ -11047,9 +11084,9 @@ bool is_downloading_state(int const st)
 		time_point32 const unset{seconds32(0)};
 
 		st->time_since_upload = m_last_upload == unset ? -1
-			: static_cast<int>(total_seconds(aux::time_now32() - m_last_upload));
+			: static_cast<int>(total_seconds(now - m_last_upload));
 		st->time_since_download = m_last_download == unset ? -1
-			: static_cast<int>(total_seconds(aux::time_now32() - m_last_download));
+			: static_cast<int>(total_seconds(now - m_last_download));
 #endif
 
 		st->finished_duration = finished_time();

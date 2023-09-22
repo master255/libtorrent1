@@ -31,10 +31,7 @@ POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include "libtorrent/config.hpp"
-#undef TORRENT_USE_NETLINK
-#undef TORRENT_USE_IFADDRS
-#define TORRENT_USE_IFADDRS 1
-#define TORRENT_USE_NETLINK 0
+
 #include "libtorrent/enum_net.hpp"
 #include "libtorrent/broadcast_socket.hpp"
 #include "libtorrent/assert.hpp"
@@ -1411,8 +1408,10 @@ int _System __libsocket_sysctl(int* mib, u_int namelen, void *oldp, size_t *oldl
 			return std::vector<ip_route>();
 		}
 
+#elif defined TORRENT_ANDROID && __ANDROID_API__ >= 24
+		ec = boost::asio::error::operation_not_supported;
 #else
-		//#error "don't know how to enumerate network routes on this platform"
+#error "don't know how to enumerate network routes on this platform"
 #endif
 		return ret;
 	}
