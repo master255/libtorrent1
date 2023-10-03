@@ -10714,12 +10714,12 @@ bool is_downloading_state(int const st)
 
     void torrent::clear_file_progress(file_index_t const index, piece_index_t const start_piece, piece_index_t const end_piece) {
         pause(torrent_handle::graceful_pause);
-        if (has_picker()) {
-            for (piece_index_t i = start_piece; i < end_piece; ++i) {
-                m_picker->we_dont_have(i);
-            }
-            update_gauge();
+        need_picker();
+        m_have_all = false;
+        for (piece_index_t i = start_piece; i < end_piece; ++i) {
+            m_picker->we_dont_have(i);
         }
+        update_gauge();
         m_file_progress.clear_file(index);
         set_state(torrent_status::downloading);
     }
