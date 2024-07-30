@@ -470,6 +470,7 @@ namespace aux {
 
         void clear_file_progress(file_index_t index, piece_index_t start_piece, piece_index_t end_piece) const;
 
+        void set_have_pieces(typed_bitfield<piece_index_t> const& bits) const;
 		// This function returns a vector with status about files
 		// that are open for this torrent. Any file that is not open
 		// will not be reported in the vector, i.e. it's possible that

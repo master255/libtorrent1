@@ -611,6 +611,8 @@ namespace libtorrent {
 
         void clear_file_progress(file_index_t index, piece_index_t start_piece, piece_index_t end_piece);
 
+        void set_have_pieces(typed_bitfield<piece_index_t> const& bits);
+
 #if TORRENT_ABI_VERSION == 1
 		void use_interface(std::string net_interface);
 #endif

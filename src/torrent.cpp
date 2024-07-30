@@ -10712,6 +10712,19 @@ bool is_downloading_state(int const st)
 #endif
 #endif // TORRENT_ABI_VERSION
 
+    void torrent::set_have_pieces(typed_bitfield<piece_index_t> const& bits) {
+        need_picker();
+        for (piece_index_t i = piece_index_t(0); i < piece_index_t(bits.size()); ++i)
+        {
+            if (!bits[i]) continue;
+            m_picker->we_have(i);
+            inc_stats_counter(counters::num_piece_passed);
+            update_gauge();
+            we_have(i);
+        }
+        files_checked();
+    }
+
     void torrent::clear_file_progress(file_index_t const index, piece_index_t const start_piece, piece_index_t const end_piece) {
         pause(torrent_handle::graceful_pause);
         need_picker();
