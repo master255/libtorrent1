@@ -1956,7 +1956,7 @@ TORRENT_VERSION_NAMESPACE_2
 
 		TORRENT_DEFINE_ALERT(dht_bootstrap_alert, 62)
 
-		static constexpr alert_category_t static_category = alert_category::dht;
+		static constexpr alert_category_t static_category = alert_category::dht_operation;
 		std::string message() const override;
 	};
 

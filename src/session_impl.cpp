@@ -6117,21 +6117,17 @@ namespace {
 
 		void on_dht_put_immutable_item(alert_manager& alerts, sha1_hash target, int num)
 		{
-			if (alerts.should_post<dht_put_alert>())
-				alerts.emplace_alert<dht_put_alert>(target, num);
+            alerts.emplace_alert<dht_put_alert>(target, num);
 		}
 
 		void on_dht_put_mutable_item(alert_manager& alerts, dht::item const& i, int num)
 		{
-			if (alerts.should_post<dht_put_alert>())
-			{
-				dht::signature const sig = i.sig();
-				dht::public_key const pk = i.pk();
-				dht::sequence_number const seq = i.seq();
-				std::string salt = i.salt();
-				alerts.emplace_alert<dht_put_alert>(pk.bytes, sig.bytes
-					, std::move(salt), seq.value, num);
-			}
+			dht::signature const sig = i.sig();
+			dht::public_key const pk = i.pk();
+			dht::sequence_number const seq = i.seq();
+			std::string salt = i.salt();
+			alerts.emplace_alert<dht_put_alert>(pk.bytes, sig.bytes
+				, std::move(salt), seq.value, num);
 		}
 
 		void put_mutable_callback(dht::item& i
