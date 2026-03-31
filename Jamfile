@@ -275,6 +275,8 @@ rule building ( properties * )
 	{
 		# allow larger .obj files (with more sections)
 		result += <cxxflags>/bigobj ;
+		# https://learn.microsoft.com/en-us/cpp/build/reference/permissive-standards-conformance?view=msvc-170
+		result += <cxxflags>/permissive- ;
 		# https://docs.microsoft.com/en-us/cpp/build/reference/utf-8-set-source-and-executable-character-sets-to-utf-8?view=msvc-170
 		result += <cxxflags>/utf-8 ;
 	}
@@ -868,7 +870,7 @@ rule generate-pkg-config ( properties * )
 	local libname = [ $(props[2]).name ] ;
 	props = $(props[1]) ;
 
-	local FULL_VERSION = 1.2.19 ;
+	local FULL_VERSION = 1.2.20 ;
 
 	p = [ install-paths $(properties) ] ;
 

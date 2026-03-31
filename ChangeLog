@@ -1,4 +1,10 @@
+1.2.20 released
+
+	* validate add_torrent_params::save_path at run-time
+	* use stricter rules for what filenames are valid on Android
+	* fix piece size check when loading torrents
 	* back-port fix last_upload and last_download resume data fields to use posix time
+	* back-port treat CGNAT address range as local IPs
 
 1.2.19 released
 

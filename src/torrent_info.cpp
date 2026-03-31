@@ -53,6 +53,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/announce_entry.hpp"
 #include "libtorrent/hex.hpp" // to_hex
 #include "libtorrent/aux_/numeric_cast.hpp"
+#include "libtorrent/piece_picker.hpp"
+#include "libtorrent/disk_interface.hpp" // for default_block_size
 
 #if TORRENT_ABI_VERSION == 1
 #include "libtorrent/lazy_entry.hpp"
@@ -87,10 +89,22 @@ namespace libtorrent {
 	// using load_torrent_limits
 	constexpr int default_piece_limit = 0x200000;
 
+	// Which characters are valid is primarily determined by the
+	// filesystem, so this logic is an approximation. Note that forward- and
+	// backslash are filtered unconditionally and separately from this function.
 	bool valid_path_character(std::int32_t const c)
 	{
 #ifdef TORRENT_WINDOWS
+		// On windows, both the filesystem and the operating system impose
+		// restrictions.
 		static const char invalid_chars[] = "?<>\"|\b*:";
+#elif defined TORRENT_ANDROID
+		// The Android kernel probably has similar restrictions as Linux (i.e.
+		// very few) but it appears some user-space system libraries impose
+		// additional restrictions, and it's probably more common to use FAT32
+		// style filesystems, which also further restricts valid characters
+		// https://cs.android.com/android/platform/superproject/+/master:frameworks/base/core/java/android/os/FileUtils.java;l=997?q=isValidFatFilenameChar
+		static const char invalid_chars[] = "\"*:<>?|";
 #else
 		static const char invalid_chars[] = "";
 #endif
@@ -1027,9 +1041,14 @@ namespace {
 
 		// extract piece length
 		std::int64_t piece_length = info.dict_find_int_value("piece length", -1);
-		if (piece_length <= 0 || piece_length > std::numeric_limits<int>::max())
+		if (piece_length <= 0)
 		{
 			ec = errors::torrent_missing_piece_length;
+			return false;
+		}
+		if (piece_length > piece_picker::max_blocks_per_piece * default_block_size)
+		{
+			ec = errors::invalid_piece_size;
 			return false;
 		}
 		file_storage files;
