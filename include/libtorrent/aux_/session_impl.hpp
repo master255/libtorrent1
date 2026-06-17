@@ -604,6 +604,8 @@ namespace aux {
 
             std::string check_file_exist(std::string const& path) const;
 
+            int dht_nodes() const;
+
 			void pop_alerts(std::vector<alert*>* alerts);
 			alert* wait_for_alert(time_duration max_wait);
 

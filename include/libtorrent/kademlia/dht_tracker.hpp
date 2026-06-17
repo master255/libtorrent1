@@ -146,6 +146,8 @@ namespace libtorrent { namespace dht {
 #endif
 		void dht_status(std::vector<dht_routing_bucket>& table
 			, std::vector<dht_lookup>& requests);
+
+        int num_nodes() const;
 		void update_stats_counters(counters& c) const;
 
 		void incoming_error(error_code const& ec, udp::endpoint const& ep);

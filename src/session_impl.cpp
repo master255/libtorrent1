@@ -4750,6 +4750,15 @@ namespace {
         return "";
     }
 
+    int session_impl::dht_nodes() const
+    {
+    #ifndef TORRENT_DISABLE_DHT
+        return m_dht ? m_dht->num_nodes() : 0;
+    #else
+        return 0;
+    #endif
+    }
+
 	torrent_handle session_impl::find_torrent_handle(sha1_hash const& info_hash)
 	{
 		return torrent_handle(find_torrent(info_hash));

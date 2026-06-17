@@ -114,6 +114,16 @@ namespace libtorrent { namespace dht {
 		update_storage_node_ids();
 	}
 
+    int dht_tracker::num_nodes() const
+    {
+        int result = 0;
+        for (auto const& n : m_nodes)
+        {
+            result += std::get<0>(n.second.dht.size());
+        }
+        return result;
+    }
+
 	void dht_tracker::new_socket(aux::listen_socket_handle const& s)
 	{
 		address const local_address = s.get_local_endpoint().address();

@@ -242,6 +242,11 @@ namespace libtorrent {
         return sync_call_ret<std::string>(&session_impl::check_file_exist, path);
     }
 
+    int session_handle::dht_nodes() const
+    {
+        return sync_call_ret<int>(&session_impl::dht_nodes);
+    }
+
 #if TORRENT_ABI_VERSION == 1
 namespace {
 
