@@ -4320,9 +4320,27 @@ bool is_downloading_state(int const st)
 		}
 #endif
 
-		// did we receive this piece from a single peer?
-		bool const single_peer = peers.size() == 1;
+        // did we receive this piece from a single peer?
+        bool const single_peer = peers.size() == 1;
 
+        for (auto p : peers)
+        {
+            if (p == nullptr) continue;
+            int hashfails = p->hashfails;
+            int trust_points = p->trust_points;
+            // we decrease more than we increase, to keep the
+            // allowed failed/passed ratio low.
+            if (single_peer)
+                trust_points -= 2;
+            else
+                trust_points -= 1;
+            ++hashfails;
+            if (trust_points < -7) trust_points = -7;
+            p->trust_points = trust_points;
+            if (hashfails > 255) hashfails = 255;
+            p->hashfails = std::uint8_t(hashfails);
+        }
+        torrent_peer* peer_to_ban = nullptr;
 		for (auto p : peers)
 		{
 			if (p == nullptr) continue;
@@ -4338,60 +4356,48 @@ bool is_downloading_state(int const st)
 				// disconnecting, mark the file as not being had.
 				allow_disconnect = peer->received_invalid_data(index, single_peer);
 			}
-
-			if (settings().get_bool(settings_pack::use_parole_mode))
-				p->on_parole = true;
-
-			int hashfails = p->hashfails;
-			int trust_points = p->trust_points;
-
-			// we decrease more than we increase, to keep the
-			// allowed failed/passed ratio low.
-			trust_points -= 2;
-			++hashfails;
-			if (trust_points < -7) trust_points = -7;
-			p->trust_points = trust_points;
-			if (hashfails > 255) hashfails = 255;
-			p->hashfails = std::uint8_t(hashfails);
+//            debug_log(("allow_disconnect: "+ std::to_string(allow_disconnect)).c_str());
+//			if (settings().get_bool(settings_pack::use_parole_mode))
+//				p->on_parole = true;
 
 			// either, we have received too many failed hashes
 			// or this was the only peer that sent us this piece.
 			// if we have failed more than 3 pieces from this peer,
 			// don't trust it regardless.
-			if (p->trust_points <= -7
-				|| (single_peer && allow_disconnect))
+			if (peer_to_ban == nullptr && (p->trust_points <= -7 || (single_peer && allow_disconnect)))
 			{
-				// we don't trust this peer anymore
-				// ban it.
-				if (m_ses.alerts().should_post<peer_ban_alert>())
-				{
-					peer_id const pid = p->connection
-						? p->connection->pid() : peer_id();
-					m_ses.alerts().emplace_alert<peer_ban_alert>(
-						get_handle(), p->ip(), pid);
-				}
-
-				// mark the peer as banned
-				ban_peer(p);
-				update_want_peers();
-				inc_stats_counter(counters::banned_for_hash_failure);
-
-				if (p->connection)
-				{
-					auto* peer = static_cast<peer_connection*>(p->connection);
-#ifndef TORRENT_DISABLE_LOGGING
-					if (should_log())
-					{
-						debug_log("*** BANNING PEER: \"%s\" Too many corrupt pieces"
-							, print_endpoint(p->ip()).c_str());
-					}
-					peer->peer_log(peer_log_alert::info, "BANNING_PEER", "Too many corrupt pieces");
-#endif
-					peer->disconnect(errors::too_many_corrupt_pieces, operation_t::bittorrent);
-				}
+                peer_to_ban = p;
 			}
 		}
+        if (peer_to_ban != nullptr) {
+            // we don't trust this peer anymore
+            // ban it.
+            if (m_ses.alerts().should_post<peer_ban_alert>())
+            {
+                peer_id const pid = peer_to_ban->connection
+                                    ? peer_to_ban->connection->pid() : peer_id();
+                m_ses.alerts().emplace_alert<peer_ban_alert>(
+                        get_handle(), peer_to_ban->ip(), pid);
+            }
+            // mark the peer as banned
+            ban_peer(peer_to_ban);
+            update_want_peers();
+            inc_stats_counter(counters::banned_for_hash_failure);
 
+            if (peer_to_ban->connection)
+            {
+                auto* peer = static_cast<peer_connection*>(peer_to_ban->connection);
+#ifndef TORRENT_DISABLE_LOGGING
+                if (should_log())
+                {
+                    debug_log("*** BANNING PEER: \"%s\" Too many corrupt pieces"
+                            , print_endpoint(peer_to_ban->ip()).c_str());
+                }
+                peer->peer_log(peer_log_alert::info, "BANNING_PEER", "Too many corrupt pieces");
+#endif
+                peer->disconnect(errors::too_many_corrupt_pieces, operation_t::bittorrent);
+            }
+        }
 		// If m_storage isn't set here, it means we're shutting down
 		if (m_storage)
 		{
