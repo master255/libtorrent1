@@ -4182,19 +4182,21 @@ bool is_downloading_state(int const st)
 			add_suggest_piece(index);
 		}
 
-		std::vector<torrent_peer*> downloaders;
-		m_picker->get_downloaders(downloaders, index);
+        // increase the trust point of all peers that sent
+        // parts of this piece.
+        std::set<torrent_peer*> const peers = [&]
+        {
+            std::vector<torrent_peer*> const downloaders = m_picker->get_downloaders(index);
 
-		// increase the trust point of all peers that sent
-		// parts of this piece.
-		std::set<torrent_peer*> peers;
-
-		// these torrent_peer pointers are owned by m_peer_list and they may be
-		// invalidated if a peer disconnects. We cannot keep them across any
-		// significant operations, but we should use them right away
-		// ignore nullptrs
-		std::remove_copy(downloaders.begin(), downloaders.end()
-			, std::inserter(peers, peers.begin()), static_cast<torrent_peer*>(nullptr));
+            std::set<torrent_peer*> ret;
+            // these torrent_peer pointers are owned by m_peer_list and they may be
+            // invalidated if a peer disconnects. We cannot keep them across any
+            // significant operations, but we should use them right away
+            // ignore nullptrs
+            std::remove_copy(downloaders.begin(), downloaders.end()
+                    , std::inserter(ret, ret.begin()), static_cast<torrent_peer*>(nullptr));
+            return ret;
+        }();
 
 		for (auto p : peers)
 		{
@@ -4213,11 +4215,6 @@ bool is_downloading_state(int const st)
 				peer->received_valid_data(index);
 			}
 		}
-		// announcing a piece may invalidate the torrent_peer pointers
-		// so we can't use them anymore
-
-		downloaders.clear();
-		peers.clear();
 
 		// make the disk cache flush the piece to disk
 		if (m_storage)
@@ -4299,15 +4296,17 @@ bool is_downloading_state(int const st)
 		}
 #endif
 
-		std::vector<torrent_peer*> downloaders;
-		if (m_picker)
-			m_picker->get_downloaders(downloaders, index);
+        std::set<torrent_peer*> const peers = [&]
+        {
+            std::vector<torrent_peer*> const downloaders = m_picker->get_downloaders(index);
 
-		// decrease the trust point of all peers that sent
-		// parts of this piece.
-		// first, build a set of all peers that participated
-		std::set<torrent_peer*> peers;
-		std::copy(downloaders.begin(), downloaders.end(), std::inserter(peers, peers.begin()));
+            std::set<torrent_peer*> ret;
+            // decrease the trust point of all peers that sent
+            // parts of this piece.
+            // first, build a set of all peers that participated
+            std::copy(downloaders.begin(), downloaders.end(), std::inserter(ret, ret.begin()));
+            return ret;
+        }();
 
 #if TORRENT_USE_ASSERTS
 		for (auto const& p : downloaders)
@@ -4947,8 +4946,7 @@ bool is_downloading_state(int const st)
 		// this means we have outstanding requests (or queued
 		// up requests that haven't been sent yet). Promote them
 		// to deadline pieces immediately
-		std::vector<torrent_peer*> downloaders;
-		m_picker->get_downloaders(downloaders, piece);
+        std::vector<torrent_peer*> const downloaders = m_picker->get_downloaders(piece);
 
 		int block = 0;
 		for (auto i = downloaders.begin()

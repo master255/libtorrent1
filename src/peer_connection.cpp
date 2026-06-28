@@ -3004,8 +3004,7 @@ namespace libtorrent {
 			int const num_blocks = t->picker().blocks_in_piece(piece);
 			if (st.requested > 0 && st.writing + st.finished + st.requested == num_blocks)
 			{
-				std::vector<torrent_peer*> d;
-				t->picker().get_downloaders(d, piece);
+                std::vector<torrent_peer*> const d = t->picker().get_downloaders(piece);
 				if (d.size() == 1)
 				{
 					// only make predictions if all remaining
