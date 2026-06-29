@@ -104,12 +104,12 @@ web_peer_connection::web_peer_connection(peer_connection_args const& pack
 		if (m_path.empty()) m_path += '/';
 		if (m_path[m_path.size() - 1] == '/')
 		{
-			m_path += escape_string(t->torrent_file().name());
+			m_path += escape_file_path(t->torrent_file().orig_files(), file_index_t(0));
 		}
 
 		if (!m_url.empty() && m_url[m_url.size() - 1] == '/')
 		{
-			m_url += escape_file_path(t->torrent_file().files(), file_index_t(0));
+			m_url += escape_file_path(t->torrent_file().orig_files(), file_index_t(0));
 		}
 	}
 
@@ -341,7 +341,7 @@ void web_peer_connection::write_request(peer_request const& r)
 
 	int size = r.length;
 	const int block_size = t->block_size();
-	const int piece_size = t->torrent_file().piece_length();
+	const int piece_size = info.piece_length();
 	peer_request pr{};
 
 	while (size > 0)
